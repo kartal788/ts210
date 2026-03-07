@@ -30,7 +30,7 @@ async def subscription_checker_loop(bot: Client):
                         user_id,
                         "❌ <b>Subscription Expired</b>\n\n"
                         "Your subscription has expired, and you have been removed from the private group.\n"
-                        "Send /start to renew your subscription and regain access."
+                        f"Please go to {Telegram.SUBSCRIPTION_URL} and send /start to renew your subscription and regain access."
                     )
                     LOGGER.info(f"Kicked expired user {user_id}")
                 except Exception as e:
@@ -46,7 +46,7 @@ async def subscription_checker_loop(bot: Client):
                         user_id,
                         f"⚠️ <b>Subscription Expiring Soon</b>\n\n"
                         f"Your subscription will expire on <b>{expiry.strftime('%Y-%m-%d %H:%M UTC')}</b>.\n"
-                        "Send /start to renew your plan before you lose access to the group!"
+                        f"Please go to {Telegram.SUBSCRIPTION_URL} and send /start to renew your plan before you lose access to the group!"
                     )
                     await db.mark_reminder_sent(user_id)
                     LOGGER.info(f"Sent expiry reminder to user {user_id}")

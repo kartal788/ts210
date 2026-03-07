@@ -990,6 +990,43 @@ class Database:
 
         return None
 
+    async def delete_media_by_stream_id(self, stream_id_hash: str) -> bool:
+        """Finds and removes a specific stream quality by its hash across all DBs. 
+        If it's the last quality, it cleans up the movie or episode/season/show."""
+        for i in range(1, self.current_db_index + 1):
+            db = self.dbs[f"storage_{i}"]
+            
+            # Check Movies
+            movie = await db["movie"].find_one({"telegram.id": stream_id_hash})
+            if movie:
+                movie["telegram"] = [q for q in movie.get("telegram", []) if q.get("id") != stream_id_hash]
+                if len(movie["telegram"]) == 0:
+                    await db["movie"].delete_one({"_id": movie["_id"]})
+                else:
+                    movie['updated_on'] = datetime.utcnow()
+                    await db["movie"].replace_one({"_id": movie["_id"]}, movie)
+                return True
+
+            # Check TV Shows
+            tv = await db["tv"].find_one({"seasons.episodes.telegram.id": stream_id_hash})
+            if tv:
+                for season in tv.get("seasons", []):
+                    for episode in season.get("episodes", []):
+                        for q in episode.get("telegram", []):
+                            if q.get("id") == stream_id_hash:
+                                episode["telegram"] = [t for t in episode.get("telegram", []) if t.get("id") != stream_id_hash]
+                                if len(episode["telegram"]) == 0:
+                                    season["episodes"] = [e for e in season.get("episodes", []) if e.get("episode_number") != episode.get("episode_number")]
+                                    if len(season["episodes"]) == 0:
+                                        tv["seasons"] = [s for s in tv.get("seasons", []) if s.get("season_number") != season.get("season_number")]
+                                        if len(tv["seasons"]) == 0:
+                                            await db["tv"].delete_one({"_id": tv["_id"]})
+                                            return True
+                                tv['updated_on'] = datetime.utcnow()
+                                await db["tv"].replace_one({"_id": tv["_id"]}, tv)
+                                return True
+        return False
+
     async def delete_movie_quality(self, tmdb_id: int, db_index: int, id: str) -> bool:
         db_key = f"storage_{db_index}"
         movie = await self.dbs[db_key]["movie"].find_one({"tmdb_id": tmdb_id})

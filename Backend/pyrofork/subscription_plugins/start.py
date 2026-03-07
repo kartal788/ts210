@@ -1,18 +1,16 @@
 from pyrogram import filters, Client, enums
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-from Backend.helper.custom_filter import CustomFilters
 from Backend.config import Telegram
 from Backend import db
 from datetime import datetime
 
-print("DEBUG: start.py PLUGIN LOADED SUCCESSFULLY!")
+print("DEBUG: Subscription Bot start.py PLUGIN LOADED SUCCESSFULLY!")
 
 @Client.on_message(filters.command('start'), group=10)
 async def send_start_message(client: Client, message: Message):
     try:
         user_id = (message.from_user.id if message.from_user else None) or (message.sender_chat.id if message.sender_chat else None) or message.chat.id
-        print(f"DEBUG: Received /start command from {user_id}")
-        # await message.reply_text("DEBUG: Bot received the start command.")
+        print(f"DEBUG: Subscription Bot received /start command from {user_id}")
         
         base_url = Telegram.BASE_URL
         addon_url = f"{base_url}/stremio/manifest.json"
@@ -70,7 +68,7 @@ async def send_start_message(client: Client, message: Message):
             
             return await message.reply_text(
                 '<b>Welcome to the Telegram Stremio Private Group!</b>\n\n'
-                'Access to this bot and the Stremio Addon requires an active subscription.\n'
+                'Access to the Stremio Addon requires an active subscription.\n'
                 'Please select a subscription plan below to continue:',
                 reply_markup=keyboard,
                 quote=True,
@@ -97,4 +95,4 @@ async def send_start_message(client: Client, message: Message):
 
     except Exception as e:
         await message.reply_text(f"⚠️ Error: {e}")
-        print(f"Error in /start handler: {e}")
+        print(f"Error in Subscription Bot /start handler: {e}")

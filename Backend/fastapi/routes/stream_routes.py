@@ -39,14 +39,32 @@ def make_json_safe(obj):
 
 
 def parse_range_header(range_header: str, file_size: int):
+    """
+    Parse HTTP Range header.
+
+    Supports:
+    bytes=1000-2000
+    bytes=1000-
+    bytes=-2000
+    """
     if not range_header:
         return 0, file_size - 1
 
     try:
-        value = range_header.replace("bytes=", "")
+        value = range_header.replace("bytes=", "").strip()
         start_str, end_str = value.split("-")
-        start = int(start_str)
-        end = int(end_str) if end_str else file_size - 1
+
+        if start_str == "":
+            length = int(end_str)
+            start = file_size - length
+            end = file_size - 1
+        elif end_str == "":
+            start = int(start_str)
+            end = file_size - 1
+        else:
+            start = int(start_str)
+            end = int(end_str)
+
     except Exception:
         raise HTTPException(
             status_code=416,
@@ -54,7 +72,13 @@ def parse_range_header(range_header: str, file_size: int):
             headers={"Content-Range": f"bytes */{file_size}"},
         )
 
-    if start < 0 or end >= file_size or end < start:
+    if start < 0:
+        start = 0
+
+    if end >= file_size:
+        end = file_size - 1
+
+    if end < start:
         raise HTTPException(
             status_code=416,
             detail="Requested Range Not Satisfiable",
@@ -304,22 +328,6 @@ async def media_streamer(
 
     # HEAD: return headers only (no body), include Content-Length so the
     # client knows the file size without opening a stream.
-    from fastapi.responses import Response as PlainResponse
-    if request.method == "HEAD":
-        head_headers = {
-            "Content-Type": mime_type,
-            "Content-Length": str(req_length),
-            "Content-Disposition": f'inline; filename="{file_name}"',
-            "Accept-Ranges": "bytes",
-            "Cache-Control": "public, max-age=3600, immutable",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
-            "X-Stream-Id": stream_id,
-        }
-        if range_header:
-            head_headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
-        return PlainResponse(status_code=206 if range_header else 200, headers=head_headers)
-
     # GET: do NOT set Content-Length on the StreamingResponse.
     # If a Telegram chunk fetch times out mid-stream the generator exits early,
     # delivering fewer bytes than the declared length.  h11 enforces
@@ -327,14 +335,37 @@ async def media_streamer(
     # Without Content-Length, uvicorn uses chunked transfer encoding which
     # handles early termination gracefully.  Stremio / media players
     # are fine with chunked 206 responses.
+
+    # HEAD request support
+    from fastapi.responses import Response as PlainResponse
+
+    if request.method == "HEAD":
+        headers = {
+            "Content-Type": mime_type,
+            "Content-Length": str(req_length),
+            "Content-Disposition": f'inline; filename="{file_name}"',
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=3600",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
+        }
+
+        if range_header:
+            headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+
+        return PlainResponse(
+            status_code=206 if range_header else 200,
+            headers=headers,
+        )
+
     headers = {
         "Content-Type": mime_type,
         "Content-Disposition": f'inline; filename="{file_name}"',
         "Accept-Ranges": "bytes",
-        "Cache-Control": "public, max-age=3600, immutable",
+        "Content-Length": str(req_length),
+        "Cache-Control": "public, max-age=3600",
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
-        "X-Stream-Id": stream_id,
     }
 
     if range_header:
@@ -342,12 +373,14 @@ async def media_streamer(
         status = 206
     else:
         status = 200
+
     return StreamingResponse(
-        content=body_gen,
+        body_gen,
         headers=headers,
         status_code=status,
         media_type=mime_type,
     )
+
 
 @router.get("/stream/stats")
 async def get_stream_stats():

@@ -152,7 +152,7 @@ async def _tmdb_episode_details(tv_id, season, episode):
         return None
 
 # ----------------- Main Metadata -----------------
-async def metadata(filename: str, channel: int, msg_id) -> dict | None:
+async def metadata(filename: str, channel: int, msg_id, override_id: str = None) -> dict | None:
     try:
         parsed = PTN.parse(filename)
     except Exception as e:
@@ -191,10 +191,18 @@ async def metadata(filename: str, channel: int, msg_id) -> dict | None:
 
 
     default_id = None
-    try:
-        default_id = extract_default_id(Backend.USE_DEFAULT_ID)
-    except Exception:
-        pass
+    if override_id:
+        try:
+            default_id = extract_default_id(override_id) or override_id
+        except Exception:
+            pass
+            
+    if not default_id:
+        try:
+            default_id = extract_default_id(Backend.USE_DEFAULT_ID)
+        except Exception:
+            pass
+            
     if not default_id:
         try:
             default_id = extract_default_id(filename)

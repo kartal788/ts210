@@ -3,40 +3,71 @@
 {% block title %}Login - Telegram Stremio{% endblock %}
 
 {% block content %}
-<div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-md w-full space-y-6">
-        <div class="app-panel p-6 text-center">
-            <h2 class="text-3xl font-bold">Admin Login</h2>
-            <p class="mt-2 theme-text-secondary text-sm">Sign in to manage streams, access and subscriptions.</p>
+<div class="min-h-[80vh] flex flex-col items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full space-y-8">
+        <div class="text-center space-y-2">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
+                <i data-lucide="shield-check" class="w-8 h-8 text-primary"></i>
+            </div>
+            <h2 class="text-3xl font-extrabold tracking-tight">Admin Login</h2>
+            <p class="theme-text-secondary text-sm">Access the Telegram Stremio management console</p>
         </div>
 
         {% if error %}
-        <div class="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-lg">
-            {{ error }}
+        <div class="flex items-center gap-3 bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-xl animate-in fade-in slide-in-from-top-2 duration-300">
+            <i data-lucide="alert-circle" class="w-5 h-5 flex-shrink-0"></i>
+            <p class="text-sm font-medium">{{ error }}</p>
         </div>
         {% endif %}
 
-        <form method="post" class="app-panel p-8 space-y-5">
-            <div>
-                <label for="username" class="block text-sm font-medium mb-2">Username</label>
-                <input type="text" id="username" name="username" required class="theme-input w-full px-3 py-2 rounded-md">
+        <form method="post" class="app-panel p-8 space-y-6 shadow-xl border-white/5">
+            <div class="space-y-4">
+                <div class="space-y-2">
+                    <label for="username" class="block text-sm font-medium theme-text-secondary ml-1">Username</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none theme-text-secondary">
+                            <i data-lucide="user" class="w-4 h-4"></i>
+                        </div>
+                        <input type="text" id="username" name="username" required 
+                            class="theme-input w-full pl-10 pr-4 py-2.5 rounded-xl border-white/10 focus:ring-2 focus:ring-primary/50 transition-all outline-none"
+                            placeholder="Enter admin username">
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <label for="password" class="block text-sm font-medium theme-text-secondary ml-1">Password</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none theme-text-secondary">
+                            <i data-lucide="lock" class="w-4 h-4"></i>
+                        </div>
+                        <input type="password" id="password" name="password" required 
+                            class="theme-input w-full pl-10 pr-4 py-2.5 rounded-xl border-white/10 focus:ring-2 focus:ring-primary/50 transition-all outline-none"
+                            placeholder="••••••••">
+                    </div>
+                </div>
             </div>
 
-            <div>
-                <label for="password" class="block text-sm font-medium mb-2">Password</label>
-                <input type="password" id="password" name="password" required class="theme-input w-full px-3 py-2 rounded-md">
-            </div>
-
-            <button type="submit" class="w-full bg-primary hover:opacity-90 text-white py-2.5 px-4 rounded-md transition-opacity font-medium shadow-sm">
-                Sign In
+            <button type="submit" class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-semibold rounded-xl text-white bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all shadow-lg shadow-primary/20">
+                <span class="absolute left-0 inset-y-0 flex items-center pl-3">
+                    <i data-lucide="log-in" class="w-4 h-4 text-primary-foreground/70 group-hover:text-primary-foreground transition-colors"></i>
+                </span>
+                Sign In to Dashboard
             </button>
         </form>
 
-        <div class="text-center text-sm theme-text-secondary">
-            Public pages:
-            <a href="/status" class="text-primary hover:underline">System Status</a> |
-            <a href="/stremio" class="text-primary hover:underline">Stremio Guide</a>
+        <div class="flex items-center justify-center space-x-4 text-xs font-medium uppercase tracking-wider theme-text-secondary">
+            <a href="/status" class="hover:text-primary transition-colors flex items-center gap-1">
+                <i data-lucide="activity" class="w-3 h-3"></i> System Status
+            </a>
+            <span class="opacity-20">|</span>
+            <a href="/stremio" class="hover:text-primary transition-colors flex items-center gap-1">
+                <i data-lucide="book-open" class="w-3 h-3"></i> Setup Guide
+            </a>
         </div>
     </div>
 </div>
+
+<script>
+    lucide.createIcons();
+</script>
 {% endblock %}

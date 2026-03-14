@@ -1103,3 +1103,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/3f/93/f73b61353b2a699d489e782c3f5998b59f974ec3156a2050a52dfd7e8946/yarl-1.20.0-cp313-cp313t-win_amd64.whl", hash = "sha256:53b2da3a6ca0a541c1ae799c349788d480e5144cac47dba0266c7cb6c76151fe", size = 101093, upload-time = "2025-04-17T00:44:27.418Z" },
     { url = "https://files.pythonhosted.org/packages/ea/1f/70c57b3d7278e94ed22d85e09685d3f0a38ebdd8c5c73b65ba4c0d0fe002/yarl-1.20.0-py3-none-any.whl", hash = "sha256:5d0fe6af927a47a230f31e6004621fd0959eaa915fc62acfafa67ff7229a3124", size = 46124, upload-time = "2025-04-17T00:45:12.199Z" },
 ]
+[[package]]
+name = "psutil"
+version = "5.9.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/source/p/psutil/psutil-5.9.6.tar.gz", hash = "sha256:4c1e4f64b0b7c2c0b2d6c71c1aa8d78b9987d57a1ee5a72a6f98234bb9e0d6c9", size = 418321, upload_time = "2025-01-15T12:00:00Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/py3/psutil-5.9.6-py3-none-any.whl", hash = "sha256:2cdd1a9e7e1bc9f4e8bb6c0b0a15e8e6c7f1a3b0b8d9b1e9c6a8e3d1b6f7e2a1", size = 123456, upload_time = "2025-01-15T12:00:00Z" }
+]

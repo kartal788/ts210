@@ -10,3 +10,6 @@ tgcrypto
 themoviedb
 uvicorn
 uv
+deep-translator==1.11.4
+psutil
+python-dateutil>=2.8.2

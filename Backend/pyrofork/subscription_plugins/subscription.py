@@ -43,13 +43,13 @@ async def plan_selection(client: Client, callback_query: CallbackQuery):
     expiry_str = new_expiry.strftime("%Y-%m-%d %H:%M UTC")
 
     text = (
-        f"<b>✅ Plan Selected: {plan['days']} Days</b>\n\n"
-        f"<b>💰 Price:</b> ₹{plan['price']}\n"
-        f"<b>📅 Expiry (if approved now):</b> {expiry_str}\n\n"
-        f"<b>📋 Payment Instructions:</b>\n"
-        f"1. Pay ₹{plan['price']} to the admin.\n"
-        f"2. <b>Send your payment screenshot directly here (in this chat)</b>.\n"
-        f"   The admin will review and activate your subscription."
+        f"<b>✅ Plan Seçildi: {plan['days']} Gün</b>\n\n"
+        f"<b>💰 Ödeme:</b> {plan['price']} TL\n"
+        f"<b>📅 Son Kullanma Tarihi (şimdi onaylanırsa):</b> {expiry_str}\n\n"
+        f"<b>📋 Ödeme Talimatları:</b>\n"
+        f"1. Yöneticiye {plan['price']} TL ödeme yapın.\n"
+        f"2. <b>Ödeme dekontunuzun ekran görüntüsünü doğrudan buraya (bu sohbete) gönderin</b>.\n"
+        f"   Yönetici ödemeyi inceleyecek ve aboneliğinizi aktif edecektir."
     )
 
     # Set pending payment state (price stored for admin display)
@@ -57,7 +57,7 @@ async def plan_selection(client: Client, callback_query: CallbackQuery):
 
     # Add cancel button
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("❌ Cancel", callback_data="cancel_payment")]
+        [InlineKeyboardButton("❌ iptal et", callback_data="cancel_payment")]
     ])
 
     dm_sent = False
@@ -78,14 +78,14 @@ async def plan_selection(client: Client, callback_query: CallbackQuery):
         
         asyncio.create_task(delete_msg(msg))
     except Exception as e:
-        print(f"Could not DM user {user_id}: {e}")
+        print(f"Kullanıcıya DM gönderilemedi {user_id}: {e}")
 
     if dm_sent:
-        await callback_query.answer("✅ Check your DM for payment instructions!", show_alert=True)
+        await callback_query.answer("✅ Ödeme talimatları için özel mesaj kutunuzu kontrol edin", show_alert=True)
     else:
         # Fallback: reply in current chat if DM fails (user hasn't started bot)
         fallback_msg = await callback_query.message.reply_text(
-            text + "\n\n⚠️ <i>Please start a DM with the bot first by clicking its username, then send your screenshot there.</i>",
+            text + "\n\n⚠️ <i>Lütfen önce botun kullanıcı adına tıklayarak botu başlatın (Start), ardından dekontunuzu buradan gönderin.</i>",
             reply_markup=keyboard,
             quote=True,
         )
@@ -133,8 +133,8 @@ async def handle_payment_screenshot(client: Client, message: Message):
             # No active payment flow - tell the user what to do
             print(f"DEBUG: No pending_payment found for {sender_id}")
             await message.reply_text(
-                "ℹ️ We received your photo, but you don't have an active payment request.\n\n"
-                "Please use /start to select a subscription plan first, then send your payment screenshot.",
+                "ℹ️ Fotoğrafınız bize ulaştı, ancak sistemde aktif bir ödeme talebiniz görünmüyor.\n\n"
+                "Lütfen önce /start komutu ile bir abonelik planı seçin, ardından ödeme dekontunuzu gönderin.",
                 quote=True
             )
             return
@@ -146,8 +146,8 @@ async def handle_payment_screenshot(client: Client, message: Message):
         # --- Admin notification ---
         keyboard = InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("✅ Approve", callback_data=f"approve_{sender_id}"),
-                InlineKeyboardButton("❌ Reject",  callback_data=f"reject_{sender_id}")
+                InlineKeyboardButton("✅ Onayla", callback_data=f"approve_{sender_id}"),
+                InlineKeyboardButton("❌ Reddet",  callback_data=f"reject_{sender_id}")
             ]
         ])
 
@@ -155,14 +155,14 @@ async def handle_payment_screenshot(client: Client, message: Message):
         username_str = f"@{message.from_user.username}" if (message.from_user and message.from_user.username) else "N/A"
 
         admin_text = (
-            f"<b>💰 New Payment Screenshot Received</b>\n\n"
-            f"<b>👤 User:</b> {user_mention}\n"
-            f"<b>🆔 User ID:</b> <code>{sender_id}</code>\n"
-            f"<b>🔗 Username:</b> {username_str}\n\n"
-            f"<b>📦 Plan Details:</b>\n"
-            f"  • Duration: <b>{duration} days</b>\n"
-            f"  • Price: <b>₹{price}</b>\n\n"
-            f"Please review the screenshot above and approve or reject."
+            f"<b>💰 Yeni Ödeme Ekran Görüntüsü Alındı</b>\n\n"
+            f"<b>👤 Kullanıcı:</b> {user_mention}\n"
+            f"<b>🆔 Kullanıcı ID:</b> <code>{sender_id}</code>\n"
+            f"<b>🔗 Kullanıcı Adı:</b> {username_str}\n\n"
+            f"<b>📦 Plan Detayları:</b>\n"
+            f"  • Süre: <b>{duration} gün</b>\n"
+            f"  • Fiyat: <b>{price} TL</b>\n\n"
+            f"Lütfen yukarıdaki ekran görüntüsünü inceleyin ve onaylayın veya reddedin.."
         )
 
         approver_ids = Telegram.APPROVER_IDS if Telegram.APPROVER_IDS else [Telegram.OWNER_ID]
@@ -180,22 +180,22 @@ async def handle_payment_screenshot(client: Client, message: Message):
 
         if admin_messages:
             await message.reply_text(
-                "✅ <b>Screenshot Received!</b>\n\n"
-                "Your payment screenshot has been forwarded to the admin for review.\n"
-                "You will be notified once it's approved. Thank you! 🙏",
+                "✅ <b>Ekran Görüntüsü Alındı!</b>\n\n"
+                "Ödeme dekontunuz incelenmek üzere yöneticiye iletildi.\n"
+                "Onaylandığında size bildirim gönderilecektir. Teşekkür ederiz.",
                 quote=True
             )
         else:
             await message.reply_text(
-                "⚠️ Your screenshot was received but we could not reach the admin. "
-                "Please contact the admin directly.",
+                "⚠️ Ekran görüntünüz alındı ancak şu anda yöneticiye ulaşılamıyor. "
+                "Lütfen doğrudan yönetici ile iletişime geçiniz.",
                 quote=True
             )
 
     except Exception as e:
         print(f"Error in handle_payment_screenshot: {e}")
         await message.reply_text(
-            f"⚠️ Something went wrong while processing your screenshot. Please try again or contact the admin.\n\nError: {e}",
+            f"⚠️ Ekran görüntünüz işlenirken bir hata oluştu. Lütfen tekrar deneyin veya yöneticiye başvurun.\n\nError: {e}",
             quote=True
         )
 
@@ -239,7 +239,7 @@ async def admin_review(client: Client, callback_query: CallbackQuery):
                     member_limit=1,
                     expire_date=datetime.utcnow() + timedelta(days=1)
                 )
-                invite_text = f"\n\n🔗 <b>Group Invite:</b> {invite_link.invite_link}"
+                invite_text = f"\n\n🔗 <b>Grup Daveti:</b> {invite_link.invite_link}"
             except Exception:
                 invite_text = ""
 
@@ -247,15 +247,15 @@ async def admin_review(client: Client, callback_query: CallbackQuery):
 
             # Build confirmation message for user
             success_text = (
-                f"🎉 <b>Payment Approved!</b>\n\n"
-                f"Your subscription is now active until <b>{expiry_str}</b>."
+                f"🎉 <b>Ödemeniz Onaylandı!</b>\n\n"
+                f"Aboneliğiniz <b>{expiry_str} tarihine kadar aktif edildi</b>."
                 f"{invite_text}"
             )
             if addon_url:
                 success_text += (
-                    f"\n\n🎬 <b>Stremio Addon — Install Link:</b>\n"
+                    f"\n\n🎬 <b>Stremio Eklentisi</b>\n"
                     f"<code>{addon_url}</code>\n\n"
-                    f"Tap the link above → <b>Install</b> in Stremio to start watching!"
+                    f"Linki kopyalayıp stremio eklentiler bölümüne ekleyin."
                 )
 
             await client.send_message(target_user_id, success_text)
@@ -273,14 +273,14 @@ async def admin_review(client: Client, callback_query: CallbackQuery):
                 username_str = "N/A"
 
             info_text = (
-                f"👤 <b>User:</b> {user_mention}\n"
-                f"🆔 <b>User ID:</b> <code>{target_user_id}</code>\n"
-                f"🔗 <b>Username:</b> {username_str}\n\n"
-                f"📦 <b>Plan:</b> {duration} days (₹{price})"
+                f"👤 <b>Kullanıcı:</b> {user_mention}\n"
+                f"🆔 <b>Kullanıcı ID:</b> <code>{target_user_id}</code>\n"
+                f"🔗 <b>Kullanıcı Adı:</b> {username_str}\n\n"
+                f"📦 <b>Plan:</b> {duration} gün ({price})TL"
             )
 
             # Update acting admin's message
-            status_caption = f"✅ <b>Approved by {admin_name}</b>\n\n{info_text}"
+            status_caption = f"✅ <b>{admin_name} tarafından onaylandı</b>\n\n{info_text}"
             await callback_query.message.edit_caption(status_caption)
 
             # Update all OTHER admins' copies
@@ -304,7 +304,7 @@ async def admin_review(client: Client, callback_query: CallbackQuery):
         if success:
             await client.send_message(
                 target_user_id,
-                "❌ <b>Payment Rejected</b>\n\nYour recent payment submission was rejected by the admin. Please contact the admin or try submitting again."
+                "❌ <b>Son ödeme gönderiminiz yönetici tarafından reddedildi. Lütfen bilgileri kontrol ederek tekrar deneyin veya yöneticiyle iletişime geçin."
             )
 
             # Determine how to format the user/payment info
@@ -320,14 +320,14 @@ async def admin_review(client: Client, callback_query: CallbackQuery):
                 username_str = "N/A"
 
             info_text = (
-                f"👤 <b>User:</b> {user_mention}\n"
-                f"🆔 <b>User ID:</b> <code>{target_user_id}</code>\n"
-                f"🔗 <b>Username:</b> {username_str}\n\n"
-                f"📦 <b>Plan:</b> {duration} days (₹{price})"
+                f"👤 <b>Kullanıcı:</b> {user_mention}\n"
+                f"🆔 <b>Kullanıcı ID:</b> <code>{target_user_id}</code>\n"
+                f"🔗 <b>Kullanıcı Adı:</b> {username_str}\n\n"
+                f"📦 <b>Plan:</b> {duration} gün ({price})TL"
             )
 
             # Update acting admin's message
-            status_caption = f"❌ <b>Rejected by {admin_name}</b>\n\n{info_text}"
+            status_caption = f"❌ <b>{admin_name} tarafından reddedildi</b>\n\n{info_text}"
             await callback_query.message.edit_caption(status_caption)
 
             # Update all OTHER admins' copies
@@ -356,22 +356,22 @@ async def check_status(client: Client, message: Message):
         
     user = await db.get_user(user_id)
     if not user or user.get("subscription_status") != "active":
-        return await message.reply_text("You do not have an active subscription.")
+        return await message.reply_text("Aktif bir aboneliğiniz bulunmuyor.")
         
     expiry = user.get("subscription_expiry")
     if not expiry:
-        return await message.reply_text("Error retrieving expiry date.")
+        return await message.reply_text("Abonelik bitiş tarihi alınırken bir hata oluştu.")
         
     now = datetime.utcnow()
     if now > expiry:
-        return await message.reply_text("Your subscription has expired.")
+        return await message.reply_text("Aboneliğinizin süresi dolmuş.")
         
     remaining = expiry - now
     days = remaining.days
     hours = remaining.seconds // 3600
     
     await message.reply_text(
-        f"<b>Subscription Status:</b> Active ✅\n"
-        f"<b>Expiry Date:</b> {expiry.strftime('%Y-%m-%d %H:%M UTC')}\n"
-        f"<b>Time Remaining:</b> {days} days and {hours} hours"
+        f"<b>Abonelik Durumu:</b> Aktif ✅\n"
+        f"<b>Son Kullanma Tarihi:</b> {expiry.strftime('%Y-%m-%d %H:%M UTC')}\n"
+        f"<b>Kalan Süre:</b> {days} gün ve {hours} saat"
     )

@@ -9,16 +9,56 @@ from Backend.config import Telegram
 import Backend
 from Backend.logger import LOGGER
 from Backend.helper.encrypt import encode_string
+from deep_translator import GoogleTranslator
 
 # ----------------- Configuration -----------------
 DELAY = 0
-tmdb = aioTMDb(key=Telegram.TMDB_API, language="en-US", region="US")
+tmdb = aioTMDb(key=Telegram.TMDB_API, language="tr-TR", region="TR")
 
 # Cache dictionaries (per run)
 IMDB_CACHE: dict = {}
 TMDB_SEARCH_CACHE: dict = {}
 TMDB_DETAILS_CACHE: dict = {}
 EPISODE_CACHE: dict = {}
+TRANSLATE_CACHE: dict = {}
+
+GENRE_TUR_ALIASES = {
+  "action": "Aksiyon",
+  "sci-fi": "Bilim Kurgu",
+  "science fiction": "Bilim Kurgu",
+  "film-noir": "Kara Film",
+  "game-show": "Oyun Gösterisi",
+  "short": "Kısa",
+  "sport": "Spor",
+  "adventure": "Macera",
+  "animation": "Animasyon",
+  "biography": "Biyografi",
+  "comedy": "Komedi",
+  "crime": "Suç",
+  "documentary": "Belgesel",
+  "drama": "Dram",
+  "family": "Aile",
+  "news": "Haberler",
+  "fantasy": "Fantastik",
+  "history": "Tarih",
+  "horror": "Korku",
+  "music": "Müzik",
+  "musical": "Müzikal",
+  "mystery": "Gizem",
+  "romance": "Romantik",
+  "tv movie": "TV Filmi",
+  "thriller": "Gerilim",
+  "war": "Savaş",
+  "western": "Vahşi Batı",
+  "action & adventure": "Aksiyon ve Macera",
+  "kids": "Çocuklar",
+  "reality": "Gerçeklik",
+  "reality-tv": "Gerçeklik",
+  "sci-fi & fantasy": "Bilim Kurgu ve Fantazi",
+  "soap": "Pembe Dizi",
+  "war & politics": "Savaş ve Politika",
+  "talk": "Talk-Show",
+}
 
 # Concurrency semaphore for external API calls
 API_SEMAPHORE = asyncio.Semaphore(12)
@@ -150,6 +190,39 @@ async def _tmdb_episode_details(tv_id, season, episode):
     except Exception:
         EPISODE_CACHE[key] = None
         return None
+
+def translate_text_safe(text: str) -> str:
+    if not text:
+        return ""
+
+    text = str(text).strip()
+
+    # çok kısa metinleri çevirmiyoruz
+    if len(text) < 3:
+        return text
+
+    if text in TRANSLATE_CACHE:
+        return TRANSLATE_CACHE[text]
+
+    try:
+        translated = GoogleTranslator(source="auto", target="tr").translate(text)
+    except Exception:
+        translated = text
+
+    TRANSLATE_CACHE[text] = translated
+    return translated
+
+def tur_genre_normalize(genres):
+    if not genres:
+        return []
+
+    out = []
+
+    for g in genres:
+        key = g.lower().replace("-", " ").strip()
+        out.append(GENRE_TUR_ALIASES.get(key, g))
+
+    return out
 
 # ----------------- Main Metadata -----------------
 async def metadata(filename: str, channel: int, msg_id, override_id: str = None) -> dict | None:
@@ -335,20 +408,20 @@ async def fetch_tv_metadata(title, season, episode, encoded_string, year=None, q
             "title": tv.name,
             "year": getattr(tv.first_air_date, "year", 0) if getattr(tv, "first_air_date", None) else 0,
             "rate": getattr(tv, "vote_average", 0) or 0,
-            "description": tv.overview or "",
+            "description": translate_text_safe(tv.overview),
             "poster": format_tmdb_image(tv.poster_path),
             "backdrop": format_tmdb_image(tv.backdrop_path, "original"),
             "logo": get_tmdb_logo(getattr(tv, "images", None)),
-            "genres": [g.name for g in (tv.genres or [])],
+            "genres": tur_genre_normalize([g.name for g in (tv.genres or [])]),
             "media_type": "tv",
             "cast": cast,
             "runtime": str(runtime),
 
             "season_number": season,
             "episode_number": episode,
-            "episode_title": getattr(ep, "name", f"S{season}E{episode}") if ep else f"S{season}E{episode}",
+            "episode_title": translate_text_safe(getattr(ep, "name", f"S{season}E{episode}")) if ep else f"S{season}E{episode}",
             "episode_backdrop": format_tmdb_image(getattr(ep, "still_path", None), "original") if ep else "",
-            "episode_overview": getattr(ep, "overview", "") if ep else "",
+           "episode_overview": translate_text_safe(getattr(ep, "overview", "")) if ep else "",
             "episode_released": (
                 ep.air_date.strftime("%Y-%m-%dT05:00:00.000Z")
                 if getattr(ep, "air_date", None)
@@ -373,20 +446,20 @@ async def fetch_tv_metadata(title, season, episode, encoded_string, year=None, q
         "title": imdb.get("title", title),
         "year": imdb.get("releaseDetailed", {}).get("year", 0),
         "rate": imdb.get("rating", {}).get("star", 0),
-        "description": imdb.get("plot", ""),
+        "description": translate_text_safe(imdb.get("plot", "")),
         "poster": images["poster"],
         "backdrop": images["backdrop"],
         "logo": images["logo"],
         "cast": imdb.get("cast", []),
         "runtime": str(imdb.get("runtime") or ""),          
-        "genres": imdb.get("genre", []),
+        "genres": tur_genre_normalize(imdb.get("genre", [])),
         "media_type": "tv",
 
         "season_number": season,
         "episode_number": episode,
-        "episode_title": ep.get("title", f"S{season}E{episode}"),
+        "episode_title": translate_text_safe(ep.get("title", f"S{season}E{episode}")),
         "episode_backdrop": ep.get("image", ""),
-        "episode_overview": ep.get("plot", ""),
+        "episode_overview": translate_text_safe(ep.get("plot", "")),
         "episode_released": str(ep.get("released", "")),
 
         "quality": quality,
@@ -491,14 +564,14 @@ async def fetch_movie_metadata(title, encoded_string, year=None, quality=None, d
             "title": movie.title,
             "year": getattr(movie.release_date, "year", 0) if getattr(movie, "release_date", None) else 0,
             "rate": getattr(movie, "vote_average", 0) or 0,
-            "description": movie.overview or "",
+            "description": translate_text_safe(movie.overview),
             "poster": format_tmdb_image(movie.poster_path),
             "backdrop": format_tmdb_image(movie.backdrop_path, "original"),
             "logo": get_tmdb_logo(getattr(movie, "images", None)),
             "cast": cast_names,
             "runtime": str(runtime),
             "media_type": "movie",
-            "genres": [g.name for g in (movie.genres or [])],
+            "genres": tur_genre_normalize([g.name for g in (movie.genres or [])]),
             "quality": quality,
             "encoded_string": encoded_string,
         }
@@ -515,14 +588,14 @@ async def fetch_movie_metadata(title, encoded_string, year=None, quality=None, d
         "title": imdb.get("title", title),
         "year": imdb.get("releaseDetailed", {}).get("year", 0),
         "rate": imdb.get("rating", {}).get("star", 0),
-        "description": imdb.get("plot", ""),
+        "description": translate_text_safe(imdb.get("plot", "")),
         "poster": images["poster"],
         "backdrop": images["backdrop"],
         "logo": images["logo"],
         "cast": imdb.get("cast", []),
         "runtime": str(imdb.get("runtime") or ""),
         "media_type": "movie",
-        "genres": imdb.get("genre", []),
+        "genres": tur_genre_normalize(imdb.get("genre", [])),
         "quality": quality,
         "encoded_string": encoded_string,
     }

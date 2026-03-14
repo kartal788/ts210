@@ -11,7 +11,7 @@ import shutil
 async def restart(client: Client, message: Message):
     try:
         restart_message = await message.reply_text(
-            '<blockquote>⚙️ Restarting Backend API... \n\n✨ Please wait as we bring everything back online! 🚀</blockquote>',
+            '<blockquote>⚙️ Bot başlatılıyor. \n\n✨ Lütfen bekleyiniz. </blockquote>',
             quote=True,
             parse_mode=enums.ParseMode.HTML
         )

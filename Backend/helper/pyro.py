@@ -129,7 +129,7 @@ async def restart_notification():
                 await StreamBot.edit_message_text(
                     chat_id=chat_id,
                     message_id=msg_id,
-                    text=f"... ♻️ Restart Successfully...! \n\nDate: {now.strftime('%d/%m/%y')}\nTime: {now.strftime('%I:%M:%S %p')}\nTimeZone: {timezone.zone}\n\nRepo: {UPSTREAM_REPO}\nBranch: {Telegram.UPSTREAM_BRANCH}\nVersion: {__version__}",
+                    text=f"Başarıyla Yeniden Başlatıldı \n\nTarih: {now.strftime('%d/%m/%y')}\nSaat: {now.strftime('%I:%M:%S %p')}\nZaman Dilimi: {timezone.zone}\nVersiyon: {__version__}",
                     parse_mode=enums.ParseMode.HTML
                 )
             except Exception as e:
@@ -143,11 +143,17 @@ async def restart_notification():
 
 # Bot commands
 commands = [
-    BotCommand("start", "🚀 Start the bot"),
-    BotCommand("set", "🎬 Manually add IMDb metadata"),
-    # BotCommand("fixmetadata", "⚙️ Fix empty fields of Metadata"),
-    BotCommand("log", "📄 Send the log file"),
-    BotCommand("restart", "♻️ Restart the bot"),
+BotCommand("start", "🚀 Botu başlatır."),
+BotCommand("ekle", "➕ Film veya dizi linki ekler."),
+BotCommand("istatistik", "📈 Bot istatistiklerini görüntüler."),
+BotCommand("tur", "🇹🇷 Türleri Türkçeye çevirir."),
+BotCommand("aynivideolarisil", "🧹 Aynı olan videoları siler."),
+BotCommand("calismayanlinklerisil", "🗑️ Çalışmayan linkleri siler."),
+BotCommand("vindir", "💾 Veritabanını indirir."),
+BotCommand("log", "📄 Günlük dosyasını gönderir."),
+BotCommand("set", "🎬 IMDb meta verilerini elle ekler."),
+BotCommand("gizlikomutlar", "🔐 Gizli komutları gösterir."),
+BotCommand("restart", "♻️ Botu yeniden başlatır.")
 ]
 
 
@@ -162,4 +168,3 @@ async def setup_bot_commands(bot: Client):
         LOGGER.info("Bot commands updated successfully.")
     except Exception as e:
         LOGGER.error(f"Error setting up bot commands: {e}")
-

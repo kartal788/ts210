@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 import pytz
 import shutil
-IST = pytz.timezone("Asia/Kolkata")
+IST = pytz.timezone("Europe/Istanbul")
 
 class ISTFormatter(Formatter):
     def formatTime(self, record, datefmt=None):

@@ -30,11 +30,11 @@ async def send_start_message(client: Client, message: Message):
                 print(f"DEBUG: Error ensuring token for free user: {e}")
                 
             await message.reply_text(
-                '🎉 <b>Welcome to the Telegram Stremio Media Server!</b>\n\n'
-                'Here is your personal Stremio Addon link:\n\n'
-                '🎬 <b>Stremio Addon — Install Link:</b>\n'
+                '🎉 <b>Telegram Stremio Medya Sunucusuna Hoş Geldiniz</b>\n\n'
+                'Kişisel Stremio Eklenti bağlantınız aşağıdadır:\n\n'
+                '🎬 <b>Stremio Eklentisi:</b>\n'
                 f'<code>{addon_url}</code>\n\n'
-                'Tap the link above → <b>Install</b> in Stremio to start watching!',
+                'Linki kopyalayıp stremio eklentiler bölümüne ekleyin',
                 quote=True,
                 parse_mode=enums.ParseMode.HTML
             )
@@ -56,22 +56,22 @@ async def send_start_message(client: Client, message: Message):
             plans = await db.get_subscription_plans()
             if not plans:
                 return await message.reply_text(
-                    '<b>Welcome to the Telegram Stremio Private Group!</b>\n\n'
-                    'Currently, no subscription plans are set up. Please contact the administrator.',
+                    '<b>Telegram Stremio Özel Grubuna Hoş Geldiniz!</b>\n\n'
+                    'Şu anda herhangi bir abonelik planı tanımlanmamıştır. Lütfen yönetici ile iletişime geçin.',
                     quote=True,
                     parse_mode=enums.ParseMode.HTML
                 )
             
             keyboard_buttons = []
             for plan in plans:
-                keyboard_buttons.append([InlineKeyboardButton(f"{plan['days']} Days - ₹{plan['price']}", callback_data=f"plan_{plan['_id']}")])
+                keyboard_buttons.append([InlineKeyboardButton(f"{plan['days']} Gün - {plan['price']} TL", callback_data=f"plan_{plan['_id']}")])
             
             keyboard = InlineKeyboardMarkup(keyboard_buttons)
             
             return await message.reply_text(
-                '<b>Welcome to the Telegram Stremio Private Group!</b>\n\n'
-                'Access to this bot and the Stremio Addon requires an active subscription.\n'
-                'Please select a subscription plan below to continue:',
+                '<bTelegram Stremio Özel Grubuna Hoş Geldiniz</b>\n\n'
+                'Stremio eklentisine erişmek için aktif bir abonelik gereklidir.\n'
+                'Devam etmek için lütfen aşağıdan bir abonelik planı seçin:',
                 reply_markup=keyboard,
                 quote=True,
                 parse_mode=enums.ParseMode.HTML
@@ -86,11 +86,11 @@ async def send_start_message(client: Client, message: Message):
             addon_url = f"{base_url}/stremio/{token_str}/manifest.json"
 
         await message.reply_text(
-            '🎉 <b>Welcome back to the Telegram Stremio Subscription Manager!</b>\n\n'
-            'Your subscription is active. Here is your personal addon link:\n\n'
-            '🎬 <b>Stremio Addon — Install Link:</b>\n'
+            '🎉 <bTelegram Stremio Abonelik Paneline Tekrar Hoş Geldiniz</b>\n\n'
+            'Aboneliğiniz aktif durumdadır. Kişisel eklenti bağlantınız aşağıdadır:\n\n'
+            '🎬 <b>Stremio eklentisi:</b>\n'
             f'<code>{addon_url}</code>\n\n'
-            'Tap the link above → <b>Install</b> in Stremio to start watching!',
+            'Linki kopyalayıp stremio eklentiler bölümüne ekleyin',
             quote=True,
             parse_mode=enums.ParseMode.HTML
         )

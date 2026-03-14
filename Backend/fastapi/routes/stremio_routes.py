@@ -10,7 +10,7 @@ from Backend.fastapi.security.tokens import verify_token
 
 # --- Configuration ---
 BASE_URL = Telegram.BASE_URL
-ADDON_NAME = "Telegram"
+ADDON_NAME = "Kartal788"
 ADDON_VERSION = __version__
 PAGE_SIZE = 15
 
@@ -18,10 +18,13 @@ router = APIRouter(prefix="/stremio", tags=["Stremio Addon"])
 
 # Define available genres
 GENRES = [
-    "Action", "Adventure", "Animation", "Biography", "Comedy",
-    "Crime", "Documentary", "Drama", "Family", "Fantasy",
-    "History", "Horror", "Music", "Mystery", "Romance",
-    "Sci-Fi", "Sport", "Thriller", "War", "Western"
+    "Aile", "Aksiyon", "Aksiyon ve Macera", "Animasyon", "Belgesel",
+    "Bilim Kurgu", "Bilim Kurgu ve Fantazi", "Biyografi", "Çocuklar",
+    "Dram", "Fantastik", "Gerilim", "Gerçeklik", "Gizem", "Haberler",
+    "Kara Film", "Komedi", "Korku", "Kısa", "Macera", "Müzik",
+    "Müzikal", "Oyun Gösterisi", "Pembe Dizi", "Romantik", "Savaş",
+    "Savaş ve Politika", "Spor", "Suç", "TV Filmi", "Talk-Show",
+    "Tarih", "Vahşi Batı"
 ]
 
 
@@ -60,17 +63,21 @@ def convert_to_stremio_meta(item: dict) -> dict:
     return meta
 
 
-def format_stream_details(filename: str, quality: str, size: str) -> tuple[str, str]:
+def format_stream_details(filename: str, quality: str, size: str, file_id: str) -> tuple[str, str]:
+    # Kaynak Telegram mı yoksa doğrudan bir link mi kontrol et
+    source_prefix = "Link" if file_id.startswith(("http://", "https://")) else "Telegram"
+
     try:
         parsed = PTN.parse(filename)
     except Exception:
-        return (f"Telegram {quality}", f"📁 {filename}\n💾 {size}")
+        # Hata durumunda da source_prefix kullanıyoruz
+        return (f"{source_prefix} {quality}", f"📁 {filename}\n💾 {size}")
 
     codec_parts = []
     if parsed.get("codec"):
         codec_parts.append(f"🎥 {parsed.get('codec')}")
     if parsed.get("bitDepth"):
-        codec_parts.append(f"🌈 {parsed.get('bitDepth')}bit")
+        codec_parts.append(f"🔟 {parsed.get('bitDepth')}bit")
     if parsed.get("audio"):
         codec_parts.append(f"🔊 {parsed.get('audio')}")
     if parsed.get("encoder"):
@@ -78,9 +85,10 @@ def format_stream_details(filename: str, quality: str, size: str) -> tuple[str, 
 
     codec_info = " ".join(codec_parts) if codec_parts else ""
 
+# İsimlendirmeyi source_prefix ile güncelleyin
     resolution = parsed.get("resolution", quality)
     quality_type = parsed.get("quality", "")
-    stream_name = f"Telegram {resolution} {quality_type}".strip()
+    stream_name = f"{source_prefix} {resolution} {quality_type}".strip()
 
     stream_title_parts = [
         f"📁 {filename}",
@@ -118,7 +126,7 @@ async def get_manifest(token: str, token_data: dict = Depends(verify_token)):
             {
                 "type": "movie",
                 "id": "latest_movies",
-                "name": "Latest",
+                "name": "Yeni eklenen",
                 "extra": [
                     {"name": "genre", "isRequired": False, "options": GENRES},
                     {"name": "skip"}
@@ -128,7 +136,7 @@ async def get_manifest(token: str, token_data: dict = Depends(verify_token)):
             {
                 "type": "movie",
                 "id": "top_movies",
-                "name": "Popular",
+                "name": "Popüler",
                 "extra": [
                     {"name": "genre", "isRequired": False, "options": GENRES},
                     {"name": "skip"},
@@ -139,7 +147,7 @@ async def get_manifest(token: str, token_data: dict = Depends(verify_token)):
             {
                 "type": "series",
                 "id": "latest_series",
-                "name": "Latest",
+                "name": "Yeni eklenen",
                 "extra": [
                     {"name": "genre", "isRequired": False, "options": GENRES},
                     {"name": "skip"}
@@ -149,7 +157,7 @@ async def get_manifest(token: str, token_data: dict = Depends(verify_token)):
             {
                 "type": "series",
                 "id": "top_series",
-                "name": "Popular",
+                "name": "Popüler",
                 "extra": [
                     {"name": "genre", "isRequired": False, "options": GENRES},
                     {"name": "skip"},
@@ -161,7 +169,7 @@ async def get_manifest(token: str, token_data: dict = Depends(verify_token)):
 
     # Build dynamic name/description/version with subscription info
     addon_name = ADDON_NAME
-    addon_desc = "Streams movies and series from your Telegram."
+    addon_desc = "Dizi ve film arşivi."
     addon_version = ADDON_VERSION
     expiry_obj = None
 
@@ -175,10 +183,9 @@ async def get_manifest(token: str, token_data: dict = Depends(verify_token)):
                     expiry_obj = user.get("subscription_expiry")
                     if expiry_obj:
                         expiry_str = expiry_obj.strftime("%d %b %Y").lstrip("0")
-                        addon_name = f"{ADDON_NAME} — Expires {expiry_str}"
+                        addon_name = f"{ADDON_NAME} — Geçerlilik Süresi: {expiry_str}"
                         addon_desc = (
-                            f"📅 Subscription active until {expiry_str}.\n"
-                            f"Streams movies and series from your Telegram."
+                            f"📅 Aboneliğiniz {expiry_str} tarihinde bitecektir.\n"
                         )
                         # Encode expiry epoch (low 16 bits, hex) into version so
                         # Stremio detects a change when subscription is updated.
@@ -186,7 +193,7 @@ async def get_manifest(token: str, token_data: dict = Depends(verify_token)):
                         addon_version = f"{ADDON_VERSION}-{epoch_tag}"
                     else:
                         addon_name = f"{ADDON_NAME} — Active"
-                        addon_desc = "✅ Subscription active.\nStreams movies and series from your Telegram."
+                        addon_desc = "✅ Aboneliğiniz aktif.\n Film ve dizi izleyebilirsiniz."
             except Exception:
                 pass  # Fallback to defaults on error
 
@@ -197,7 +204,7 @@ async def get_manifest(token: str, token_data: dict = Depends(verify_token)):
         "id": f"telegram.media.{token[:8]}",   # per-user ID so each token is independent
         "version": addon_version,
         "name": addon_name,
-        "logo": "https://i.postimg.cc/XqWnmDXr/Picsart-25-10-09-08-09-45-867.png",
+        "logo": "https://i.hizliresim.com/9n9fgux.jpg",
         "description": addon_desc,
         "types": ["movie", "series"],
         "resources": resources,
@@ -253,10 +260,10 @@ async def configure_addon(token: str):
                         expiry_str = expiry.strftime("%d %b %Y").lstrip("0")
                     if sub_status == "active":
                         status_color = "#22c55e"
-                        status_text = "✅ Active"
+                        status_text = "✅ Aktif"
                     else:
                         status_color = "#ef4444"
-                        status_text = "🔴 Expired"
+                        status_text = "🔴 Süresi dolmuş"
             except Exception:
                 pass
 
@@ -329,43 +336,43 @@ async def configure_addon(token: str):
 <body>
   <div class="card">
     <div class="logo">🎬</div>
-    <h1>Telegram Stremio Addon</h1>
-    <p class="sub-title">Click the button below to install or update your addon in Stremio.</p>
+    <h1>Telegram Stremio Eklentisi</h1>
+    <p class="sub-title">Eklentinizi Stremio'da yüklemek veya güncellemek için aşağıdaki butona tıklayın.</p>
 
     <div class="info-row">
-      <span class="info-label">User</span>
+      <span class="info-label">Kullanıcı</span>
       <span class="info-val">{user_name}</span>
     </div>
     <div class="info-row">
-      <span class="info-label">Status</span>
+      <span class="info-label">Durum</span>
       <span class="status-badge">{status_text}</span>
     </div>
     <div class="info-row">
-      <span class="info-label">Expires</span>
+      <span class="info-label">Bitiş Tarihi</span>
       <span class="info-val">{expiry_str}</span>
     </div>
 
     <a href="{web_install_url}" class="btn-update" target="_blank">
-      ⚡ Install / Update in Stremio
+      ⚡ Stremio'da Yükle / Güncelle
     </a>
 
     <div class="steps">
-      <b>Or install manually:</b>
+      <b>Veya manuel olarak yükleyin:</b>
       <ol>
-        <li>Open Stremio → <b>Add-ons</b> tab</li>
-        <li>Click the <b>🔍 Search / URL</b> icon</li>
-        <li>Paste the URL below and press Enter</li>
+        <li>Stremio'yu açın → Eklentiler (Add-ons) tıklayın.</li>
+        <li>Add addon kısmına tıklayın.</li>
+        <li>Aşağıdaki bağlantıyı yapıştırın ve Enter tuşuna basın.</li>
       </ol>
     </div>
 
     <div class="url-box" id="murl">{manifest_url}</div>
-    <button onclick="copyUrl()" class="btn-copy">📋 Copy URL</button>
+    <button onclick="copyUrl()" class="btn-copy">📋 Bağlantıyı Kopyala</button>
     <script>
       function copyUrl() {{
         navigator.clipboard.writeText('{manifest_url}').then(() => {{
           const b = document.querySelector('.btn-copy');
-          b.textContent = '✅ Copied!';
-          setTimeout(() => b.textContent = '📋 Copy URL', 2000);
+          b.textContent = '✅ Kopyalandı!';
+          setTimeout(() => b.textContent = '📋 Bağlantıyı Kopyala, 2000);
         }});
       }}
     </script>
@@ -501,38 +508,15 @@ async def get_streams(
     id: str,
     token_data: dict = Depends(verify_token)
 ):
-
+    # Abonelik ve limit kontrolleri (Burada mevcut kodunuz kalabilir)
     if token_data.get("subscription_expired"):
         from Backend.config import Telegram as _TG
-        return {
-            "streams": [
-                {
-                    "name": "🚫 Subscription Expired",
-                    "title": "Your subscription has expired.\nRenew via the bot to continue watching.",
-                    "url": _TG.SUBSCRIPTION_URL
-                }
-            ]
-        }
+        return {"streams": [{"name": "🚫 Abonelik süreniz doldu", "title": "Abonelik süresi doldu.", "url": _TG.SUBSCRIPTION_URL}]}
 
     if token_data.get("limit_exceeded"):
         limit_type = token_data["limit_exceeded"]
-
-        title = (
-            "🚫 Daily Limit Reached – Upgrade Required"
-            if limit_type == "daily"
-            else "🚫 Monthly Limit Reached – Upgrade Required"
-        )
-
-        return {
-            "streams": [
-                {
-                    "name": "Limit Reached",
-                    "title": title,
-                    "url": token_data["limit_video"]
-                }
-            ]
-        }
-
+        title = "🚫 Kullanım limitiniz doldu – Aboneliğinizi yükseltmeniz gerekiyor."
+        return {"streams": [{"name": "Limit Reached", "title": title, "url": token_data["limit_video"]}]}
 
     try:
         parts = id.split(":")
@@ -552,29 +536,39 @@ async def get_streams(
         return {"streams": []}
 
     streams = []
+    
+    # 1. Döngü Bloğu (4 boşluk girinti)
     for quality in media_details.get("telegram", []):
-        if quality.get("id"):
-            filename = quality.get("name", "")
-            quality_str = quality.get("quality", "HD")
-            size = quality.get("size", "")
+        file_id = quality.get("id")
+        if not file_id:
+            continue
 
-            stream_name, stream_title = format_stream_details(
-                filename, quality_str, size
-            )
+        filename = quality.get("name", "")
+        quality_str = quality.get("quality", "HD")
+        size = quality.get("size", "")
 
-            streams.append({
-                "name": stream_name,
-                "title": stream_title,
-                "url": f"{BASE_URL}/dl/{token}/{quality.get('id')}/video.mkv"
-            })
+        stream_name, stream_title = format_stream_details(
+            filename, quality_str, size, file_id
+        )
 
+        url = (
+            file_id
+            if file_id.startswith(("http://", "https://"))
+            else f"{BASE_URL}/dl/{token}/{file_id}/video.mkv"
+        )
+
+        streams.append({
+            "name": stream_name,
+            "title": stream_title,
+            "url": url
+        })
+
+    # 2. Sıralama ve Düzenleme Bloğu (Aynı hizada, for ile paralel)
     streams.sort(
         key=lambda s: get_resolution_priority(s.get("name", "")),
         reverse=True
     )
 
-    # Deduplicate stream names — Stremio collapses streams with identical names,
-    # so when two files share the same caption we append (1), (2) ... to each duplicate.
     name_count: dict = {}
     for s in streams:
         name_count[s["name"]] = name_count.get(s["name"], 0) + 1
@@ -585,4 +579,5 @@ async def get_streams(
             seen[s["name"]] = seen.get(s["name"], 0) + 1
             s["name"] = f"{s['name']} ({seen[s['name']]})"
 
+    # 3. Return (En dıştaki fonksiyon hızıyla aynı olmalı)
     return {"streams": streams}

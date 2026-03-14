@@ -62,7 +62,7 @@ async def send_start_message(client: Client, message: Message):
             
             keyboard_buttons = []
             for plan in plans:
-                keyboard_buttons.append([InlineKeyboardButton(f"{plan['days']} Days - ₹{plan['price']}", callback_data=f"plan_{plan['_id']}")])
+                keyboard_buttons.append([InlineKeyboardButton(f"{plan['days']} Günlük - TL{plan['price']}", callback_data=f"plan_{plan['_id']}")])
             
             keyboard = InlineKeyboardMarkup(keyboard_buttons)
             

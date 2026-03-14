@@ -2,7 +2,7 @@ import pytz
 from logging import getLogger, FileHandler, StreamHandler, INFO, ERROR, Formatter, basicConfig
 from datetime import datetime
 
-IST = pytz.timezone("Asia/Kolkata")
+IST = pytz.timezone("Europe/Istanbul")
 
 class ISTFormatter(Formatter):
     def formatTime(self, record, datefmt=None):

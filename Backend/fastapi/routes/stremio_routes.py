@@ -10,7 +10,7 @@ from Backend.fastapi.security.tokens import verify_token
 
 # --- Configuration ---
 BASE_URL = Telegram.BASE_URL
-ADDON_NAME = "Kartal788"
+ADDON_NAME = "Kartal"
 ADDON_VERSION = __version__
 PAGE_SIZE = 15
 
@@ -65,7 +65,7 @@ def convert_to_stremio_meta(item: dict) -> dict:
 
 def format_stream_details(filename: str, quality: str, size: str, file_id: str) -> tuple[str, str]:
     # Kaynak Telegram mı yoksa doğrudan bir link mi kontrol et
-    source_prefix = "Link" if file_id.startswith(("http://", "https://")) else "Kartal788"
+    source_prefix = "Link" if file_id.startswith(("http://", "https://")) else "Kartal"
 
     try:
         parsed = PTN.parse(filename)

@@ -445,7 +445,7 @@ async def fetch_tv_metadata(title, season, episode, encoded_string, year=None, q
     return {
         "tmdb_id": imdb.get("moviedb_id") or imdb_id.replace("tt", ""),
         "imdb_id": imdb_id,
-        "title": imdb.get("title") or title,
+        "title": title or imdb.get("title"),
         "year": imdb.get("releaseDetailed", {}).get("year", 0),
         "rate": imdb.get("rating", {}).get("star", 0),
         "description": translate_text_safe(imdb.get("plot", "")),

@@ -405,7 +405,7 @@ async def fetch_tv_metadata(title, season, episode, encoded_string, year=None, q
         return {
             "tmdb_id": tv.id,
             "imdb_id": getattr(getattr(tv, "external_ids", None), "imdb_id", None),
-            "title": tv.name,
+            "title": getattr(tv, "name", title),
             "year": getattr(tv.first_air_date, "year", 0) if getattr(tv, "first_air_date", None) else 0,
             "rate": getattr(tv, "vote_average", 0) or 0,
             "description": translate_text_safe(tv.overview),
@@ -443,7 +443,7 @@ async def fetch_tv_metadata(title, season, episode, encoded_string, year=None, q
     return {
         "tmdb_id": imdb.get("moviedb_id") or imdb_id.replace("tt", ""),
         "imdb_id": imdb_id,
-        "title": imdb.get("title", title),
+        "title": imdb.get("title") or title,
         "year": imdb.get("releaseDetailed", {}).get("year", 0),
         "rate": imdb.get("rating", {}).get("star", 0),
         "description": translate_text_safe(imdb.get("plot", "")),
@@ -561,7 +561,7 @@ async def fetch_movie_metadata(title, encoded_string, year=None, quality=None, d
         return {
             "tmdb_id": movie.id,
             "imdb_id": getattr(movie.external_ids, "imdb_id", None),
-            "title": movie.title,
+            "title": getattr(movie, "title", title),
             "year": getattr(movie.release_date, "year", 0) if getattr(movie, "release_date", None) else 0,
             "rate": getattr(movie, "vote_average", 0) or 0,
             "description": translate_text_safe(movie.overview),
@@ -585,7 +585,7 @@ async def fetch_movie_metadata(title, encoded_string, year=None, quality=None, d
     return {
         "tmdb_id": imdb.get("moviedb_id") or imdb_id.replace("tt", ""),
         "imdb_id": imdb_id,
-        "title": imdb.get("title", title),
+        "title": imdb.get("title") or title,
         "year": imdb.get("releaseDetailed", {}).get("year", 0),
         "rate": imdb.get("rating", {}).get("star", 0),
         "description": translate_text_safe(imdb.get("plot", "")),

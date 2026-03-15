@@ -65,7 +65,7 @@ def convert_to_stremio_meta(item: dict) -> dict:
 
 def format_stream_details(filename: str, quality: str, size: str, file_id: str) -> tuple[str, str]:
     # Kaynak Telegram mı yoksa doğrudan bir link mi kontrol et
-    source_prefix = "Link" if file_id.startswith(("http://", "https://")) else "Telegram"
+    source_prefix = "Link" if file_id.startswith(("http://", "https://")) else "Kartal788"
 
     try:
         parsed = PTN.parse(filename)

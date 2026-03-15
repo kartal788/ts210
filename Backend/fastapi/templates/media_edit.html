@@ -394,7 +394,7 @@
         for (let [key, value] of formData.entries()) {
             if (key === 'genres') {
                 updateData[key] = value.split(',').map(g => g.trim()).filter(g => g);
-            } else if (key === 'rating' || key === 'release_year' || key === 'runtime') {
+            } else if (key === 'rating' || key === 'release_year' || key === 'runtime' || key === 'tmdb_id') {
                 updateData[key] = value ? parseFloat(value) : null;
             } else {
                 updateData[key] = value || null;

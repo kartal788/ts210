@@ -1,9 +1,12 @@
 import os
 import re
 import aiohttp
+import time
 import asyncio  # <--- BU EKSİKTİ, EKLENDİ
 from datetime import timezone, datetime
 from dateutil.parser import parse as parse_date
+from Backend.helper.metadata import tmdb
+from pyrogram.errors import FloodWait
 
 from pyrogram import Client, filters
 from pyrogram.types import Message
@@ -369,3 +372,76 @@ async def calismayan_linkleri_sil(client: Client, message: Message):
             caption=header + "\n📄 Silinen içerik listesi dosya olarak gönderildi."
         )
         await status.delete()
+
+@Client.on_message(filters.command("turkcebaslik") & filters.private & CustomFilters.owner)
+async def toplu_turkce_yap(client, message):
+    status = await message.reply_text("🔄 İşlem başlatılıyor...")
+    
+    g_film, g_dizi, hata = 0, 0, 0
+    last_update_time = time.time()
+    last_status_text = "" # Mesaj içeriği değişmiş mi kontrolü için
+
+    async def update_status(text, force=False):
+        nonlocal last_update_time, last_status_text
+        
+        # İçerik aynıysa veya 15 saniye geçmediyse (force değilse) güncelleme yapma
+        if not force:
+            if text == last_status_text or (time.time() - last_update_time < 15):
+                return
+
+        try:
+            await status.edit_text(text)
+            last_update_time = time.time()
+            last_status_text = text
+        except FloodWait as e:
+            await asyncio.sleep(e.value)
+        except Exception:
+            pass
+
+    # 1. FİLMLER
+    async for movie in movie_col.find({"tmdb_id": {"$ne": None}}):
+        try:
+            m_id = movie.get("tmdb_id")
+            details = await tmdb.movie(m_id).details()
+            tr_title = details.title
+
+            if tr_title and tr_title != movie.get("title"):
+                await movie_col.update_one({"_id": movie["_id"]}, {"$set": {"title": tr_title}})
+                g_film += 1
+                # Sadece bir şey değiştiğinde mesajı güncellemeyi dene
+                await update_status(f"🔄 Güncelleniyor...\n🎬 Film: {g_film}\n📺 Dizi: {g_dizi}")
+            
+            await asyncio.sleep(0.25)
+            
+        except FloodWait as e:
+            await asyncio.sleep(e.value)
+        except Exception:
+            hata += 1
+
+    # 2. DİZİLER
+    async for tv in series_col.find({"tmdb_id": {"$ne": None}}):
+        try:
+            t_id = tv.get("tmdb_id")
+            details = await tmdb.tv(t_id).details()
+            tr_title = details.name
+
+            if tr_title and tr_title != tv.get("title"):
+                await series_col.update_one({"_id": tv["_id"]}, {"$set": {"title": tr_title}})
+                g_dizi += 1
+                await update_status(f"🔄 Güncelleniyor...\n🎬 Film: {g_film}\n📺 Dizi: {g_dizi}")
+
+            await asyncio.sleep(0.25)
+            
+        except FloodWait as e:
+            await asyncio.sleep(e.value)
+        except Exception:
+            hata += 1
+
+    # SONUÇ
+    final_text = (
+        f"✅ **Güncelleme Tamamlandı!**\n\n"
+        f"🎬 Güncellenen Film: {g_film}\n"
+        f"📺 Güncellenen Dizi: {g_dizi}\n"
+        f"⚠️ Hata: {hata}"
+    )
+    await update_status(final_text, force=True)

@@ -563,7 +563,7 @@ async def fetch_movie_metadata(title, encoded_string, year=None, quality=None, d
         return {
             "tmdb_id": movie.id,
             "imdb_id": getattr(movie.external_ids, "imdb_id", None),
-            "title": movie.title or movie.original_title or title
+            "title": movie.title or movie.original_title or title,
             "year": getattr(movie.release_date, "year", 0) if getattr(movie, "release_date", None) else 0,
             "rate": getattr(movie, "vote_average", 0) or 0,
             "description": translate_text_safe(movie.overview),

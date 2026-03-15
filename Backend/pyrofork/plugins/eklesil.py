@@ -159,7 +159,7 @@ async def ekle(client: Client, message: Message):
                     await movie_col.insert_one(doc)
                 else:
                     doc["telegram"].append(telegram_obj)
-                    doc["updated_on"] = str(datetime.utcnow())
+                    doc["updated_on"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
                     await movie_col.replace_one({"_id": doc["_id"]}, doc)
                 movie_count += 1
                 added_names.append(f"🎬 {meta['title']}")
@@ -197,7 +197,7 @@ async def ekle(client: Client, message: Message):
                     else:
                         ep["telegram"].append(telegram_obj)
 
-                    doc["updated_on"] = str(datetime.utcnow())
+                    doc["updated_on"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
                     await series_col.replace_one({"_id": doc["_id"]}, doc)
                 series_count += 1
                 added_names.append(f"📺 {meta['title']}")

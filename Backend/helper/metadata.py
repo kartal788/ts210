@@ -407,7 +407,7 @@ async def fetch_tv_metadata(title, season, episode, encoded_string, year=None, q
         return {
             "tmdb_id": tv.id,
             "imdb_id": getattr(getattr(tv, "external_ids", None), "imdb_id", None),
-            "title": getattr(tv, "name", title),
+            "title": tv.name or tv.original_name or title,
             "year": getattr(tv.first_air_date, "year", 0) if getattr(tv, "first_air_date", None) else 0,
             "rate": getattr(tv, "vote_average", 0) or 0,
             "description": translate_text_safe(tv.overview),

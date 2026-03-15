@@ -229,6 +229,7 @@ def tur_genre_normalize(genres):
 # ----------------- Main Metadata -----------------
 async def metadata(filename: str, channel: int, msg_id, override_id: str = None) -> dict | None:
     try:
+        filename = re.sub(r'\bm(1080p|720p|2160p|480p)\b', r'\1', filename, flags=re.IGNORECASE)
         parsed = PTN.parse(filename)
     except Exception as e:
         LOGGER.error(f"PTN parsing failed for {filename}: {e}\n{traceback.format_exc()}")

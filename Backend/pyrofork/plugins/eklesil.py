@@ -375,16 +375,15 @@ async def calismayan_linkleri_sil(client: Client, message: Message):
         )
         await status.delete()
 
+def format_time(seconds):
+    """Saniyeyi HH:MM:SS formatına çevirir."""
+    return time.strftime("%H:%M:%S", time.gmtime(seconds))
+
 @Client.on_message(filters.command("turkcebaslik") & filters.private & CustomFilters.owner)
 async def toplu_turkce_yap(client: Client, message: Message):
+    start_time = time.time()  # İşlem başlangıç saati
     status = await message.reply_text("🔄 **İşlem başlatılıyor...**\nVeritabanı taranıyor.")
     
-    # İşleme özel geçici hata dosyası
-    temp_log_file = "islem_hatalari.txt"
-    if os.path.exists(temp_log_file):
-        os.remove(temp_log_file)
-
-    # Toplam sayıları çekelim
     total_movies = await movie_col.count_documents({"tmdb_id": {"$ne": None}})
     total_series = await series_col.count_documents({"tmdb_id": {"$ne": None}})
     total_all = total_movies + total_series
@@ -404,18 +403,10 @@ async def toplu_turkce_yap(client: Client, message: Message):
         except Exception:
             pass
 
-    async def log_and_save_error(type_, doc, err):
+    async def log_error(type_, doc, err):
         nonlocal hata
         hata += 1
-        # Detaylı log mesajı
-        log_msg = f"[{type_}] ID: {doc.get('_id')} | TMDB: {doc.get('tmdb_id')} | Hata: {err}"
-        
-        # 1. Senin logger.py üzerinden IST saatiyle log.txt'ye ve konsola yazar
-        LOGGER.error(log_msg)
-        
-        # 2. İşlem sonunda Telegram'dan gönderilecek dosyaya yazalım
-        async with aiopen(temp_log_file, "a", encoding="utf-8") as f:
-            await f.write(f"{log_msg}\n")
+        LOGGER.error(f"[{type_}] ID: {doc.get('_id')} | TMDB: {doc.get('tmdb_id')} | Hata: {err}")
 
     # --- FİLMLER ---
     async for movie in movie_col.find({"tmdb_id": {"$ne": None}}):
@@ -429,16 +420,23 @@ async def toplu_turkce_yap(client: Client, message: Message):
                 await movie_col.update_one({"_id": movie["_id"]}, {"$set": {"title": tr_title}})
                 g_film += 1
             
+            # Süre Hesaplamaları
+            elapsed_time = time.time() - start_time
+            avg_time_per_item = elapsed_time / processed_count
+            remaining_items = total_all - processed_count
+            estimated_remaining_time = avg_time_per_item * remaining_items
+
             await update_status(
                 f"🔄 **Türkçe Başlık Güncelleme**\n\n"
                 f"📊 İlerleme: `{processed_count}/{total_all}`\n"
-                f"⏳ Kalan: `{total_all - processed_count}`\n\n"
                 f"🎬 Güncellenen: `{g_film}`\n"
-                f"⚠️ Hatalar: `{hata}`"
+                f"⚠️ Hatalar: `{hata}`\n\n"
+                f"⏱️ Geçen Süre: `{format_time(elapsed_time)}`\n"
+                f"⏳ Kalan Süre: `{format_time(estimated_remaining_time)}`"
             )
-            await asyncio.sleep(0.2) # API'yi yormayalım
+            await asyncio.sleep(0.2) 
         except Exception as e:
-            await log_and_save_error("FİLM", movie, str(e))
+            await log_error("FİLM", movie, str(e))
 
     # --- DİZİLER ---
     async for tv in series_col.find({"tmdb_id": {"$ne": None}}):
@@ -452,30 +450,30 @@ async def toplu_turkce_yap(client: Client, message: Message):
                 await series_col.update_one({"_id": tv["_id"]}, {"$set": {"title": tr_title}})
                 g_dizi += 1
             
+            elapsed_time = time.time() - start_time
+            avg_time_per_item = elapsed_time / processed_count
+            remaining_items = total_all - processed_count
+            estimated_remaining_time = avg_time_per_item * remaining_items
+
             await update_status(
                 f"🔄 **Türkçe Başlık Güncelleme**\n\n"
                 f"📊 İlerleme: `{processed_count}/{total_all}`\n"
-                f"⏳ Kalan: `{total_all - processed_count}`\n\n"
                 f"📺 Güncellenen: `{g_dizi}`\n"
-                f"⚠️ Hatalar: `{hata}`"
+                f"⚠️ Hatalar: `{hata}`\n\n"
+                f"⏱️ Geçen Süre: `{format_time(elapsed_time)}`\n"
+                f"⏳ Kalan Süre: `{format_time(estimated_remaining_time)}`"
             )
             await asyncio.sleep(0.2)
         except Exception as e:
-            await log_and_save_error("DİZİ", tv, str(e))
+            await log_error("DİZİ", tv, str(e))
 
     # --- SONUÇ ---
+    total_elapsed = time.time() - start_time
     final_text = (
         f"✅ **İşlem Tamamlandı!**\n\n"
         f"🎬 Toplam Film: `{g_film}`\n"
         f"📺 Toplam Dizi: `{g_dizi}`\n"
-        f"⚠️ Toplam Hata: `{hata}`"
+        f"⚠️ Toplam Hata: `{hata}`\n"
+        f"⏱️ Toplam Süre: `{format_time(total_elapsed)}`"
     )
     await update_status(final_text, force=True)
-
-    if hata > 0:
-        await message.reply_document(
-            document=temp_log_file,
-            caption=f"❌ İşlem sırasında {hata} hata oluştu.\nDetaylar log dosyasında."
-        )
-        if os.path.exists(temp_log_file):
-            os.remove(temp_log_file)

@@ -381,23 +381,18 @@ def format_time(seconds):
 
 @Client.on_message(filters.command("turkcebaslik") & filters.private & CustomFilters.owner)
 async def toplu_turkce_yap(client: Client, message: Message):
-    start_time = time.time()
     status = await message.reply_text("🔄 **İşlem başlatılıyor...**\nVeritabanı taranıyor.")
     
-    # TMDB ID'si olanları filtrele
+    # Toplam sayıları çekelim
     total_movies = await movie_col.count_documents({"tmdb_id": {"$ne": None}})
     total_series = await series_col.count_documents({"tmdb_id": {"$ne": None}})
     total_all = total_movies + total_series
     
-    if total_all == 0:
-        return await status.edit_text("❌ Güncellenecek içerik bulunamadı.")
-
     processed_count, g_film, g_dizi, hata = 0, 0, 0, 0
     last_update_time = time.time()
 
     async def update_status(text, force=False):
         nonlocal last_update_time
-        # Telegram API limitleri için 15 saniyede bir güncelleme
         if not force and (time.time() - last_update_time < 15):
             return
         try:
@@ -411,34 +406,30 @@ async def toplu_turkce_yap(client: Client, message: Message):
     async def log_error(type_, doc, err):
         nonlocal hata
         hata += 1
-        LOGGER.error(f"[{type_}] ID: {doc.get('_id')} | TMDB: {doc.get('tmdb_id')} | Hata: {err}")
+        # Sadece merkezi log sistemine (log.txt ve konsol) yazar
+        log_msg = f"[{type_}] ID: {doc.get('_id')} | TMDB: {doc.get('tmdb_id')} | Hata: {err}"
+        LOGGER.error(log_msg)
 
     # --- FİLMLER ---
     async for movie in movie_col.find({"tmdb_id": {"$ne": None}}):
         processed_count += 1
         try:
             m_id = movie.get("tmdb_id")
-            # CRITICAL: language="tr" eklenmeli
-            details = await tmdb.movie(m_id).details(language="tr")
+            details = await tmdb.movie(m_id).details()
             tr_title = details.title
 
             if tr_title and tr_title != movie.get("title"):
                 await movie_col.update_one({"_id": movie["_id"]}, {"$set": {"title": tr_title}})
                 g_film += 1
             
-            elapsed_time = time.time() - start_time
-            avg_time = elapsed_time / processed_count
-            eta = avg_time * (total_all - processed_count)
-
             await update_status(
                 f"🔄 **Türkçe Başlık Güncelleme**\n\n"
                 f"📊 İlerleme: `{processed_count}/{total_all}`\n"
-                f"🎬 Güncellenen Film: `{g_film}`\n"
-                f"⚠️ Hatalar: `{hata}`\n\n"
-                f"⏱️ Geçen: `{format_time(elapsed_time)}`\n"
-                f"⏳ Kalan: `{format_time(eta)}`"
+                f"⏳ Kalan: `{total_all - processed_count}`\n\n"
+                f"🎬 Güncellenen: `{g_film}`\n"
+                f"⚠️ Hatalar: `{hata}`"
             )
-            await asyncio.sleep(0.5) # TMDB ban riskine karşı biraz artırıldı
+            await asyncio.sleep(0.2) 
         except Exception as e:
             await log_error("FİLM", movie, str(e))
 
@@ -447,35 +438,30 @@ async def toplu_turkce_yap(client: Client, message: Message):
         processed_count += 1
         try:
             t_id = tv.get("tmdb_id")
-            # CRITICAL: language="tr" eklenmeli
-            details = await tmdb.tv(t_id).details(language="tr")
+            details = await tmdb.tv(t_id).details()
             tr_title = details.name
 
             if tr_title and tr_title != tv.get("title"):
                 await series_col.update_one({"_id": tv["_id"]}, {"$set": {"title": tr_title}})
                 g_dizi += 1
             
-            elapsed_time = time.time() - start_time
-            avg_time = elapsed_time / processed_count
-            eta = avg_time * (total_all - processed_count)
-
             await update_status(
                 f"🔄 **Türkçe Başlık Güncelleme**\n\n"
                 f"📊 İlerleme: `{processed_count}/{total_all}`\n"
-                f"📺 Güncellenen Dizi: `{g_dizi}`\n"
-                f"⚠️ Hatalar: `{hata}`\n\n"
-                f"⏱️ Geçen: `{format_time(elapsed_time)}`\n"
-                f"⏳ Kalan: `{format_time(eta)}`"
+                f"⏳ Kalan: `{total_all - processed_count}`\n\n"
+                f"📺 Güncellenen: `{g_dizi}`\n"
+                f"⚠️ Hatalar: `{hata}`"
             )
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.2)
         except Exception as e:
             await log_error("DİZİ", tv, str(e))
 
     # --- SONUÇ ---
-    await status.edit_text(
+    final_text = (
         f"✅ **İşlem Tamamlandı!**\n\n"
-        f"🎬 Film: `{g_film}`\n"
-        f"📺 Dizi: `{g_dizi}`\n"
-        f"⚠️ Hata: `{hata}`\n"
-        f"⏱️ Toplam Süre: `{format_time(time.time() - start_time)}`"
+        f"🎬 Toplam Film: `{g_film}`\n"
+        f"📺 Toplam Dizi: `{g_dizi}`\n"
+        f"⚠️ Toplam Hata: `{hata}`\n\n"
+        f"ℹ️ *Detaylı hatalar merkezi log dosyasına kaydedildi.*"
     )
+    await update_status(final_text, force=True)

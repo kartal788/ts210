@@ -462,6 +462,6 @@ async def toplu_turkce_yap(client: Client, message: Message):
         f"🎬 Toplam Film: `{g_film}`\n"
         f"📺 Toplam Dizi: `{g_dizi}`\n"
         f"⚠️ Toplam Hata: `{hata}`\n\n"
-        f"ℹ️ *Detaylı hatalar merkezi log dosyasına kaydedildi.*"
+        f"ℹ️ *Hata ayrıntısını /log komutu ile görebilirsiniz.*"
     )
     await update_status(final_text, force=True)

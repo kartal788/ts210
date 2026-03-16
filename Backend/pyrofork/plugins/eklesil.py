@@ -15,6 +15,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from Backend.helper.custom_filter import CustomFilters
 from Backend.helper.metadata import metadata
 from Backend.logger import LOGGER
+from aiofiles import open as aiopen
+
 
 # ----------------- ENV -----------------
 DATABASE_RAW = os.getenv("DATABASE", "")
@@ -374,32 +376,50 @@ async def calismayan_linkleri_sil(client: Client, message: Message):
         await status.delete()
 
 @Client.on_message(filters.command("turkcebaslik") & filters.private & CustomFilters.owner)
-async def toplu_turkce_yap(client, message):
-    status = await message.reply_text("🔄 İşlem başlatılıyor...")
+async def toplu_turkce_yap(client: Client, message: Message):
+    status = await message.reply_text("🔄 **İşlem başlatılıyor...**\nVeritabanı taranıyor.")
     
-    g_film, g_dizi, hata = 0, 0, 0
+    # İşleme özel geçici hata dosyası
+    temp_log_file = "islem_hatalari.txt"
+    if os.path.exists(temp_log_file):
+        os.remove(temp_log_file)
+
+    # Toplam sayıları çekelim
+    total_movies = await movie_col.count_documents({"tmdb_id": {"$ne": None}})
+    total_series = await series_col.count_documents({"tmdb_id": {"$ne": None}})
+    total_all = total_movies + total_series
+    
+    processed_count, g_film, g_dizi, hata = 0, 0, 0, 0
     last_update_time = time.time()
-    last_status_text = "" # Mesaj içeriği değişmiş mi kontrolü için
 
     async def update_status(text, force=False):
-        nonlocal last_update_time, last_status_text
-        
-        # İçerik aynıysa veya 15 saniye geçmediyse (force değilse) güncelleme yapma
-        if not force:
-            if text == last_status_text or (time.time() - last_update_time < 15):
-                return
-
+        nonlocal last_update_time
+        if not force and (time.time() - last_update_time < 15):
+            return
         try:
             await status.edit_text(text)
             last_update_time = time.time()
-            last_status_text = text
         except FloodWait as e:
             await asyncio.sleep(e.value)
         except Exception:
             pass
 
-    # 1. FİLMLER
+    async def log_and_save_error(type_, doc, err):
+        nonlocal hata
+        hata += 1
+        # Detaylı log mesajı
+        log_msg = f"[{type_}] ID: {doc.get('_id')} | TMDB: {doc.get('tmdb_id')} | Hata: {err}"
+        
+        # 1. Senin logger.py üzerinden IST saatiyle log.txt'ye ve konsola yazar
+        LOGGER.error(log_msg)
+        
+        # 2. İşlem sonunda Telegram'dan gönderilecek dosyaya yazalım
+        async with aiopen(temp_log_file, "a", encoding="utf-8") as f:
+            await f.write(f"{log_msg}\n")
+
+    # --- FİLMLER ---
     async for movie in movie_col.find({"tmdb_id": {"$ne": None}}):
+        processed_count += 1
         try:
             m_id = movie.get("tmdb_id")
             details = await tmdb.movie(m_id).details()
@@ -408,18 +428,21 @@ async def toplu_turkce_yap(client, message):
             if tr_title and tr_title != movie.get("title"):
                 await movie_col.update_one({"_id": movie["_id"]}, {"$set": {"title": tr_title}})
                 g_film += 1
-                # Sadece bir şey değiştiğinde mesajı güncellemeyi dene
-                await update_status(f"🔄 Güncelleniyor...\n🎬 Film: {g_film}\n📺 Dizi: {g_dizi}")
             
-            await asyncio.sleep(0.25)
-            
-        except FloodWait as e:
-            await asyncio.sleep(e.value)
-        except Exception:
-            hata += 1
+            await update_status(
+                f"🔄 **Türkçe Başlık Güncelleme**\n\n"
+                f"📊 İlerleme: `{processed_count}/{total_all}`\n"
+                f"⏳ Kalan: `{total_all - processed_count}`\n\n"
+                f"🎬 Güncellenen: `{g_film}`\n"
+                f"⚠️ Hatalar: `{hata}`"
+            )
+            await asyncio.sleep(0.2) # API'yi yormayalım
+        except Exception as e:
+            await log_and_save_error("FİLM", movie, str(e))
 
-    # 2. DİZİLER
+    # --- DİZİLER ---
     async for tv in series_col.find({"tmdb_id": {"$ne": None}}):
+        processed_count += 1
         try:
             t_id = tv.get("tmdb_id")
             details = await tmdb.tv(t_id).details()
@@ -428,20 +451,31 @@ async def toplu_turkce_yap(client, message):
             if tr_title and tr_title != tv.get("title"):
                 await series_col.update_one({"_id": tv["_id"]}, {"$set": {"title": tr_title}})
                 g_dizi += 1
-                await update_status(f"🔄 Güncelleniyor...\n🎬 Film: {g_film}\n📺 Dizi: {g_dizi}")
-
-            await asyncio.sleep(0.25)
             
-        except FloodWait as e:
-            await asyncio.sleep(e.value)
-        except Exception:
-            hata += 1
+            await update_status(
+                f"🔄 **Türkçe Başlık Güncelleme**\n\n"
+                f"📊 İlerleme: `{processed_count}/{total_all}`\n"
+                f"⏳ Kalan: `{total_all - processed_count}`\n\n"
+                f"📺 Güncellenen: `{g_dizi}`\n"
+                f"⚠️ Hatalar: `{hata}`"
+            )
+            await asyncio.sleep(0.2)
+        except Exception as e:
+            await log_and_save_error("DİZİ", tv, str(e))
 
-    # SONUÇ
+    # --- SONUÇ ---
     final_text = (
-        f"✅ **Güncelleme Tamamlandı!**\n\n"
-        f"🎬 Güncellenen Film: {g_film}\n"
-        f"📺 Güncellenen Dizi: {g_dizi}\n"
-        f"⚠️ Hata: {hata}"
+        f"✅ **İşlem Tamamlandı!**\n\n"
+        f"🎬 Toplam Film: `{g_film}`\n"
+        f"📺 Toplam Dizi: `{g_dizi}`\n"
+        f"⚠️ Toplam Hata: `{hata}`"
     )
     await update_status(final_text, force=True)
+
+    if hata > 0:
+        await message.reply_document(
+            document=temp_log_file,
+            caption=f"❌ İşlem sırasında {hata} hata oluştu.\nDetaylar log dosyasında."
+        )
+        if os.path.exists(temp_log_file):
+            os.remove(temp_log_file)

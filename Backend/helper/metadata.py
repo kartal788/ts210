@@ -252,6 +252,13 @@ async def metadata(filename: str, channel: int, msg_id, override_id: str = None)
     episode = parsed.get("episode")
     year = parsed.get("year")
     quality = parsed.get("resolution")
+    if not quality:
+        # Çözünürlük yoksa dosya adında dvdrip veya .avi ara
+        if re.search(r'dvdrip|\.avi', filename, re.IGNORECASE):
+            quality = "576p"
+        else:
+            # Hiçbir şey bulunamazsa varsayılan 1080p
+            quality = "1080p"
     if isinstance(season, list) or isinstance(episode, list):
         LOGGER.warning(f"Invalid season/episode format for {filename}: {parsed}")
         return None

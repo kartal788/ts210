@@ -514,161 +514,113 @@ async def fetch_tv_metadata(title, season, episode, encoded_string, year=None, q
 async def fetch_movie_metadata(title, encoded_string, year=None, quality=None, default_id=None) -> dict | None:
     imdb_id = None
     tmdb_id = None
-    imdb_details = None
-    use_tmdb = False
+    movie = None
 
-    # -------------------------------------------------------
-    # 1. PROCESS DEFAULT ID (tt = IMDb, digits = TMDb)
-    # -------------------------------------------------------
+    # 1. AŞAMA: Kimlik (ID) Tespiti
     if default_id:
         default_id = str(default_id).strip()
-
         if default_id.startswith("tt"):
             imdb_id = default_id
-            use_tmdb = False                       
         elif default_id.isdigit():
             tmdb_id = int(default_id)
-            use_tmdb = True                       
 
-    # -------------------------------------------------------
-    # 2. IF NO DEFAULT ID → SEARCH IMDb FIRST
-    # -------------------------------------------------------
-    if not imdb_id and not tmdb_id:
-        imdb_id = await safe_imdb_search(
-            f"{title} {year}" if year else title,
-            "movie"
-        )
-        use_tmdb = not bool(imdb_id)
-
-    # -------------------------------------------------------
-    # 3. FETCH IMDb DETAILS (only if imdb_id exists)
-    # -------------------------------------------------------
-    if imdb_id and not use_tmdb:
+    # 2. AŞAMA: TMDb ID'sini Kesinleştirme (Cross-Check)
+    # Eğer elimizde sadece IMDb ID varsa, TMDb'de karşılığını arıyoruz (Logo/Görsel için şart)
+    if not tmdb_id and imdb_id:
         try:
-            if imdb_id in IMDB_CACHE:
-                imdb_details = IMDB_CACHE[imdb_id]
-            else:
-                async with API_SEMAPHORE:
-                    imdb_details = await get_detail(
-                        imdb_id=imdb_id,
-                        media_type="movie"
-                    )
-
-                IMDB_CACHE[imdb_id] = imdb_details
-
+            async with API_SEMAPHORE:
+                # TMDb find metodu ile IMDb ID üzerinden TMDb ID'sine ulaşıyoruz
+                find_res = await tmdb.find(imdb_id, source="imdb_id")
+                if find_res and find_res.movie_results:
+                    tmdb_id = find_res.movie_results[0].id
         except Exception as e:
-            LOGGER.warning(f"IMDb movie fetch failed [{title}] → {e}")
-            imdb_details = None
-            use_tmdb = True
+            LOGGER.warning(f"TMDb find failed for {imdb_id}: {e}")
 
-    # -------------------------------------------------------
-    # 4. DECIDE FINAL DATA SOURCE
-    # -------------------------------------------------------
-    must_use_tmdb = (
-        use_tmdb or
-        imdb_details is None or
-        imdb_details == {}
-    )
-
-    # =======================================================
-    #  5. TMDb MODE
-    # =======================================================
-    if must_use_tmdb:
-        LOGGER.info(f"No valid IMDb data for '{title}' → using TMDb")
-
-        # TMDb search if id unknown
-        if not tmdb_id:
-            tmdb_result = await safe_tmdb_search(title, "movie", year)
-            if not tmdb_result:
-                LOGGER.warning(f"No TMDb movie found for '{title}'")
-                return None
+    # Hala TMDb ID yoksa isimle TMDb'de ara
+    if not tmdb_id:
+        tmdb_result = await safe_tmdb_search(title, "movie", year)
+        if tmdb_result:
             tmdb_id = tmdb_result.id
 
-        # Fetch TMDb details
+    # 3. AŞAMA: TMDb Verisini Çek (ÖNCELİKLİ MOD)
+    if tmdb_id:
         movie = await _tmdb_movie_details(tmdb_id)
-        if not movie:
-            LOGGER.warning(f"TMDb details failed for {tmdb_id}")
-            return None
+        if movie:
+            # Oyuncu kadrosu (Cast)
+            credits = getattr(movie, "credits", None) or {}
+            cast_arr = getattr(credits, "cast", []) or []
+            cast_names = [getattr(c, "name", None) or getattr(c, "original_name", None) for c in cast_arr]
 
-        # Cast extraction
-        credits = getattr(movie, "credits", None) or {}
-        cast_arr = getattr(credits, "cast", []) or []
-        cast_names = [
-            getattr(c, "name", None) or getattr(c, "original_name", None)
-            for c in cast_arr
-        ]
+            # Çalışma süresi
+            runtime_val = getattr(movie, "runtime", None)
+            runtime = f"{runtime_val} min" if runtime_val else ""
 
-        runtime_val = getattr(movie, "runtime", None)
-        runtime = f"{runtime_val} min" if runtime_val else ""
+            # 4. AŞAMA: Başlık ve Açıklama Kontrolü (Türkçe değilse çevir)
+            tmdb_title = movie.title or movie.original_title or title
+            if not is_turkish(tmdb_title):
+                tmdb_title = translate_text_safe(tmdb_title)
 
-        # ---------------- TITLE ----------------
-        tmdb_title = movie.title or ""
-        original_title = movie.original_title or title
+            overview = movie.overview or ""
+            if overview and not is_turkish(overview):
+                overview = translate_text_safe(overview)
 
-        if not is_turkish(tmdb_title):
-            tmdb_title = translate_text_safe(tmdb_title or original_title)
+            # 5. AŞAMA: Görsel ve Logo Yerleştirme
+            tmdb_imdb_ref = getattr(movie.external_ids, "imdb_id", None) or imdb_id
+            fallback_images = format_imdb_images(tmdb_imdb_ref)
 
-        # ---------------- DESCRIPTION ----------------
-        overview = movie.overview or ""
+            poster = format_tmdb_image(movie.poster_path) or fallback_images["poster"]
+            backdrop = format_tmdb_image(movie.backdrop_path, "original") or fallback_images["backdrop"]
+            logo = get_tmdb_logo(getattr(movie, "images", None)) or fallback_images["logo"]
 
-        if not is_turkish(overview):
-            overview = translate_text_safe(overview)
+            return {
+                "tmdb_id": movie.id,
+                "imdb_id": tmdb_imdb_ref,
+                "title": tmdb_title,
+                "year": getattr(movie.release_date, "year", 0) if getattr(movie, "release_date", None) else 0,
+                "rate": getattr(movie, "vote_average", 0) or 0,
+                "description": overview,
+                "poster": poster,
+                "backdrop": backdrop,
+                "logo": logo,
+                "cast": cast_names,
+                "runtime": str(runtime),
+                "media_type": "movie",
+                "genres": tur_genre_normalize([g.name for g in (movie.genres or [])]),
+                "quality": quality,
+                "encoded_string": encoded_string,
+            }
 
-        # ---------------- IMAGE FALLBACK ----------------
-        imdb_ref = getattr(movie.external_ids, "imdb_id", None)
-        images = format_imdb_images(imdb_ref)
+    # 6. AŞAMA: Fallback (TMDb tamamen başarısız olursa IMDb + Çeviri Modu)
+    if imdb_id:
+        if imdb_id not in IMDB_CACHE:
+            async with API_SEMAPHORE:
+                imdb_details = await get_detail(imdb_id=imdb_id, media_type="movie")
+                IMDB_CACHE[imdb_id] = imdb_details
+        else:
+            imdb_details = IMDB_CACHE[imdb_id]
 
-        poster = format_tmdb_image(movie.poster_path)
-        backdrop = format_tmdb_image(movie.backdrop_path, "original")
+        if imdb_details:
+            images = format_imdb_images(imdb_id)
+            plot_text = imdb_details.get("plot", "")
+            if plot_text and not is_turkish(plot_text):
+                plot_text = translate_text_safe(plot_text)
 
-        if not poster:
-            poster = images["poster"]
+            return {
+                "tmdb_id": imdb_details.get("moviedb_id") or imdb_id.replace("tt", ""),
+                "imdb_id": imdb_id,
+                "title": imdb_details.get("title") or title,
+                "year": imdb_details.get("releaseDetailed", {}).get("year", 0),
+                "rate": imdb_details.get("rating", {}).get("star", 0),
+                "description": plot_text,
+                "poster": images["poster"],
+                "backdrop": images["backdrop"],
+                "logo": images["logo"],
+                "cast": imdb_details.get("cast", []),
+                "runtime": str(imdb_details.get("runtime") or ""),
+                "media_type": "movie",
+                "genres": tur_genre_normalize(imdb_details.get("genre", [])),
+                "quality": quality,
+                "encoded_string": encoded_string,
+            }
 
-        if not backdrop:
-            backdrop = images["backdrop"]
-        return {
-            "tmdb_id": movie.id,
-            "imdb_id": getattr(movie.external_ids, "imdb_id", None),
-            "title": tmdb_title,
-            "year": getattr(movie.release_date, "year", 0) if getattr(movie, "release_date", None) else 0,
-            "rate": getattr(movie, "vote_average", 0) or 0,
-            "description": overview,
-            "poster": poster,
-            "backdrop": backdrop,
-            "logo": get_tmdb_logo(getattr(movie, "images", None)),
-            "cast": cast_names,
-            "runtime": str(runtime),
-            "media_type": "movie",
-            "genres": tur_genre_normalize([g.name for g in (movie.genres or [])]),
-            "quality": quality,
-            "encoded_string": encoded_string,
-        }
-
-    # =======================================================
-    #  6. IMDb MODE
-    # =======================================================
-    images = format_imdb_images(imdb_id)
-    imdb = imdb_details or {}
-
-    # Mantığı sözlük dışına çıkarıyoruz
-    plot_text = imdb.get("plot", "") or ""
-    if plot_text and not is_turkish(plot_text):
-        plot_text = translate_text_safe(plot_text)
-
-    return {
-        "tmdb_id": imdb.get("moviedb_id") or imdb_id.replace("tt", ""),
-        "imdb_id": imdb_id,
-        "title": imdb.get("title") or title,
-        "year": imdb.get("releaseDetailed", {}).get("year", 0),
-        "rate": imdb.get("rating", {}).get("star", 0),
-        "description": plot_text,
-        "poster": images["poster"],
-        "backdrop": images["backdrop"],
-        "logo": images["logo"],
-        "cast": imdb.get("cast", []),
-        "runtime": str(imdb.get("runtime") or ""),
-        "media_type": "movie",
-        "genres": tur_genre_normalize(imdb.get("genre", [])),
-        "quality": quality,
-        "encoded_string": encoded_string,
-    }
+    return None

@@ -466,7 +466,7 @@ async def toplu_turkce_yap(client: Client, message: Message):
     )
     await update_status(final_text, force=True)
     
-    @Client.on_message(filters.command("posterturkce") & filters.private & CustomFilters.owner)
+@Client.on_message(filters.command("posterturkce") & filters.private & CustomFilters.owner)
 async def toplu_poster_guncelle(client: Client, message: Message):
     status = await message.reply_text("🖼️ **Poster güncelleme işlemi başlatılıyor...**\nTMDb verileri kontrol ediliyor.")
     
@@ -498,7 +498,7 @@ async def toplu_poster_guncelle(client: Client, message: Message):
             details = await tmdb.movie(m_id).details(language="tr-TR")
             
             if details.poster_path:
-                new_poster = f"https://image.tmdb.org/t/p/w300{details.poster_path}"
+                new_poster = f"https://image.tmdb.org/t/p/w500{details.poster_path}"
                 
                 if new_poster != movie.get("poster"):
                     await movie_col.update_one({"_id": movie["_id"]}, {"$set": {"poster": new_poster}})
@@ -523,7 +523,7 @@ async def toplu_poster_guncelle(client: Client, message: Message):
             details = await tmdb.tv(t_id).details(language="tr-TR")
 
             if details.poster_path:
-                new_poster = f"https://image.tmdb.org/t/p/w300{details.poster_path}"
+                new_poster = f"https://image.tmdb.org/t/p/w500{details.poster_path}"
                 
                 if new_poster != tv.get("poster"):
                     await series_col.update_one({"_id": tv["_id"]}, {"$set": {"poster": new_poster}})

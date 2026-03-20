@@ -317,35 +317,122 @@ async def metadata(filename: str, channel: int, msg_id, override_id: str = None)
 async def fetch_tv_metadata(title, season, episode, encoded_string, year=None, quality=None, default_id=None) -> dict | None:
     imdb_id = None
     tmdb_id = None
-    imdb_tv = None
-    imdb_ep = None
-    use_tmdb = False
+    tv = None
+    ep = None
 
     # -------------------------------------------------------
-    # 1. Handle default ID (IMDb / TMDb)
+    # 1. ID Tespiti (Varsayılan ID Kontrolü)
     # -------------------------------------------------------
     if default_id:
-        default_id = str(default_id)
+        default_id = str(default_id).strip()
         if default_id.startswith("tt"):
             imdb_id = default_id
-            use_tmdb = False
         elif default_id.isdigit():
             tmdb_id = int(default_id)
-            use_tmdb = True
 
     # -------------------------------------------------------
-    # 2. If no ID → Try IMDb search first
+    # 2. TMDB Öncelikli Veri Arama ve Çekme
     # -------------------------------------------------------
-    if not imdb_id and not tmdb_id:
-        imdb_id = await safe_imdb_search(title, "tvSeries")
-        use_tmdb = not bool(imdb_id)
-
-    # -------------------------------------------------------
-    # 3. IMDb fetch (series + episode)
-    # -------------------------------------------------------
-    if imdb_id and not use_tmdb:
+    # Eğer elimizde sadece IMDb ID varsa, TMDb ID'sini bulmaya çalış
+    if not tmdb_id and imdb_id:
         try:
-            # ----- series details
+            async with API_SEMAPHORE:
+                find_res = await tmdb.find(imdb_id, source="imdb_id")
+                if find_res and find_res.tv_results:
+                    tmdb_id = find_res.tv_results[0].id
+        except Exception as e:
+            LOGGER.warning(f"TMDb find failed for {imdb_id}: {e}")
+
+    # Eğer hala ID yoksa, başlık ile TMDb'de ara
+    if not tmdb_id:
+        tmdb_search = await safe_tmdb_search(title, "tv", year)
+        if tmdb_search:
+            tmdb_id = tmdb_search.id
+
+    # TMDb ID bulunduysa detayları çek
+    if tmdb_id:
+        tv = await _tmdb_tv_details(tmdb_id)
+        if tv:
+            ep = await _tmdb_episode_details(tmdb_id, season, episode)
+
+            # Cast listesi
+            credits = getattr(tv, "credits", None) or {}
+            cast_arr = getattr(credits, "cast", []) or []
+            cast = [
+                getattr(c, "name", None) or getattr(c, "original_name", None)
+                for c in cast_arr
+            ]
+
+            # Süre (Bölüm süresi -> Dizi genel süresi)
+            ep_runtime = getattr(ep, "runtime", None) if ep else None
+            series_runtime = (
+                tv.episode_run_time[0] if getattr(tv, "episode_run_time", None) else None
+            )
+            runtime_val = ep_runtime or series_runtime
+            runtime = f"{runtime_val} min" if runtime_val else ""
+
+            # Başlık ve Açıklama Çeviri Kontrolü
+            tmdb_title = tv.name or tv.original_name or title
+            if not is_turkish(tmdb_title):
+                tmdb_title = translate_text_safe(tmdb_title)
+
+            overview = tv.overview or ""
+            if overview and not is_turkish(overview):
+                overview = translate_text_safe(overview)
+
+            # Görseller ve Metahub Fallback
+            tmdb_imdb_ref = getattr(getattr(tv, "external_ids", None), "imdb_id", None) or imdb_id
+            images = format_imdb_images(tmdb_imdb_ref)
+
+            poster = format_tmdb_image(tv.poster_path) or images["poster"]
+            backdrop = format_tmdb_image(tv.backdrop_path, "original") or images["backdrop"]
+            
+            # Bölüm Başlığı ve Özeti Çeviri Kontrolü
+            ep_title = getattr(ep, "name", f"S{season}E{episode}") if ep else f"S{season}E{episode}"
+            if ep_title and not is_turkish(ep_title):
+                ep_title = translate_text_safe(ep_title)
+            
+            ep_overview = getattr(ep, "overview", "") if ep else ""
+            if ep_overview and not is_turkish(ep_overview):
+                ep_overview = translate_text_safe(ep_overview)
+
+            return {
+                "tmdb_id": tv.id,
+                "imdb_id": tmdb_imdb_ref,
+                "title": tmdb_title,
+                "year": getattr(tv.first_air_date, "year", 0) if getattr(tv, "first_air_date", None) else 0,
+                "rate": getattr(tv, "vote_average", 0) or 0,
+                "description": overview,
+                "poster": poster,
+                "backdrop": backdrop,
+                "logo": get_tmdb_logo(getattr(tv, "images", None)) or images["logo"],
+                "genres": tur_genre_normalize([g.name for g in (tv.genres or [])]),
+                "media_type": "tv",
+                "cast": cast,
+                "runtime": str(runtime),
+                "season_number": season,
+                "episode_number": episode,
+                "episode_title": ep_title,
+                "episode_backdrop": format_tmdb_image(getattr(ep, "still_path", None), "original") if ep else "",
+                "episode_overview": ep_overview,
+                "episode_released": (
+                    ep.air_date.strftime("%Y-%m-%dT05:00:00.000Z")
+                    if getattr(ep, "air_date", None)
+                    else ""
+                ),
+                "quality": quality,
+                "encoded_string": encoded_string,
+            }
+
+    # -------------------------------------------------------
+    # 3. IMDb Fallback (TMDb Verisi Bulunamazsa)
+    # -------------------------------------------------------
+    if not imdb_id:
+        imdb_id = await safe_imdb_search(title, "tvSeries")
+
+    if imdb_id:
+        try:
+            # Seri detayları
             if imdb_id in IMDB_CACHE:
                 imdb_tv = IMDB_CACHE[imdb_id]
             else:
@@ -353,7 +440,7 @@ async def fetch_tv_metadata(title, season, episode, encoded_string, year=None, q
                     imdb_tv = await get_detail(imdb_id=imdb_id, media_type="tvSeries")
                 IMDB_CACHE[imdb_id] = imdb_tv
 
-            # ----- episode details
+            # Bölüm detayları
             ep_key = f"{imdb_id}::{season}::{episode}"
             if ep_key in EPISODE_CACHE:
                 imdb_ep = EPISODE_CACHE[ep_key]
@@ -362,151 +449,42 @@ async def fetch_tv_metadata(title, season, episode, encoded_string, year=None, q
                     imdb_ep = await get_season(imdb_id=imdb_id, season_id=season, episode_id=episode)
                 EPISODE_CACHE[ep_key] = imdb_ep
 
+            if imdb_tv:
+                imdb = imdb_tv or {}
+                ep_data = imdb_ep or {}
+                images = format_imdb_images(imdb_id)
+
+                ep_title_imdb = ep_data.get("name") if ep_data else f"S{season}E{episode}"
+                if ep_title_imdb and not is_turkish(ep_title_imdb):
+                    ep_title_imdb = translate_text_safe(ep_title_imdb)
+
+                return {
+                    "tmdb_id": imdb.get("moviedb_id") or imdb_id.replace("tt", ""),
+                    "imdb_id": imdb_id,
+                    "title": title or imdb.get("title"),
+                    "year": imdb.get("releaseDetailed", {}).get("year", 0),
+                    "rate": imdb.get("rating", {}).get("star", 0),
+                    "description": translate_text_safe(imdb.get("plot", "")),
+                    "poster": images["poster"],
+                    "backdrop": images["backdrop"],
+                    "logo": images["logo"],
+                    "cast": imdb.get("cast", []),
+                    "runtime": str(imdb.get("runtime") or ""),          
+                    "genres": tur_genre_normalize(imdb.get("genre", [])),
+                    "media_type": "tv",
+                    "season_number": season,
+                    "episode_number": episode,
+                    "episode_title": ep_title_imdb,
+                    "episode_backdrop": ep_data.get("image", ""),
+                    "episode_overview": translate_text_safe(ep_data.get("plot", "")),
+                    "episode_released": str(ep_data.get("released", "")),
+                    "quality": quality,
+                    "encoded_string": encoded_string,
+                }
         except Exception as e:
-            LOGGER.warning(f"IMDb TV fetch failed [{imdb_id}] → {e}")
-            imdb_tv = None
-            imdb_ep = None
-            use_tmdb = True
+            LOGGER.error(f"IMDb TV fallback fetch failed for {title}: {e}")
 
-    # -------------------------------------------------------
-    # 4. Decide if TMDb required
-    # -------------------------------------------------------
-    must_use_tmdb = (
-        use_tmdb or
-        imdb_tv is None or
-        imdb_tv == {}
-    )
-
-    # =======================================================
-    #  5. TMDb MODE
-    # =======================================================
-    if must_use_tmdb:
-        LOGGER.info(f"No valid IMDb TV data for '{title}' → using TMDb")
-
-        # Search TMDb by title
-        if not tmdb_id:
-            tmdb_search = await safe_tmdb_search(title, "tv", year)
-            if not tmdb_search:
-                LOGGER.warning(f"No TMDb TV result for '{title}'")
-                return None
-            tmdb_id = tmdb_search.id
-
-        # Fetch full TV show details
-        tv = await _tmdb_tv_details(tmdb_id)
-        if not tv:
-            LOGGER.warning(f"TMDb TV details failed for id={tmdb_id}")
-            return None
-
-        # Fetch episode
-        ep = await _tmdb_episode_details(tmdb_id, season, episode)
-
-        # Cast list
-        credits = getattr(tv, "credits", None) or {}
-        cast_arr = getattr(credits, "cast", []) or []
-        cast = [
-            getattr(c, "name", None) or getattr(c, "original_name", None)
-            for c in cast_arr
-        ]
-
-        # Runtime (prefer episode → series → empty)
-        ep_runtime = getattr(ep, "runtime", None) if ep else None
-        series_runtime = (
-            tv.episode_run_time[0] if getattr(tv, "episode_run_time", None) else None
-        )
-        runtime_val = ep_runtime or series_runtime
-        runtime = f"{runtime_val} min" if runtime_val else ""
-
-        # --- TITLE ---
-        tmdb_title = tv.name or ""
-        original_title = tv.original_name or title
-
-        if not is_turkish(tmdb_title):
-            tmdb_title = translate_text_safe(tmdb_title or original_title)
-
-        # --- DESCRIPTION ---
-        overview = tv.overview or ""
-        if not is_turkish(overview):
-            overview = translate_text_safe(overview)
-
-        # --- IMAGE FALLBACK ---
-        imdb_ref = getattr(getattr(tv, "external_ids", None), "imdb_id", None)
-        images = format_imdb_images(imdb_ref)
-
-        poster = format_tmdb_image(tv.poster_path)
-        backdrop = format_tmdb_image(tv.backdrop_path, "original")
-
-        if not poster:
-            poster = images["poster"]
-
-        if not backdrop:
-            backdrop = images["backdrop"]
-      
-        return {
-            "tmdb_id": tv.id,
-            "imdb_id": getattr(getattr(tv, "external_ids", None), "imdb_id", None),
-            "title": tmdb_title,
-            "year": getattr(tv.first_air_date, "year", 0) if getattr(tv, "first_air_date", None) else 0,
-            "rate": getattr(tv, "vote_average", 0) or 0,
-            "description": overview,
-            "poster": poster,
-            "backdrop": backdrop,
-            "logo": get_tmdb_logo(getattr(tv, "images", None)),
-            "genres": tur_genre_normalize([g.name for g in (tv.genres or [])]),
-            "media_type": "tv",
-            "cast": cast,
-            "runtime": str(runtime),
-            "season_number": season,
-            "episode_number": episode,
-            "episode_title": translate_text_safe(getattr(ep, "name", f"S{season}E{episode}")) if ep else f"S{season}E{episode}",
-            "episode_backdrop": format_tmdb_image(getattr(ep, "still_path", None), "original") if ep else "",
-            "episode_overview": translate_text_safe(getattr(ep, "overview", "")) if ep else "",
-            "episode_released": (
-                ep.air_date.strftime("%Y-%m-%dT05:00:00.000Z")
-                if getattr(ep, "air_date", None)
-                else ""
-            ),
-
-            "quality": quality,
-            "encoded_string": encoded_string,
-        }
-
-    # =======================================================
-    
-    # =======================================================
-    #  6. IMDb MODE
-    # =======================================================
-    imdb = imdb_tv or {}
-    ep = imdb_ep or {}
-    images = format_imdb_images(imdb_id)
-
-    # Mantığı sözlük dışına çıkarıyoruz
-    ep_title = ep.get("name") if ep else f"S{season}E{episode}"
-    if ep_title and not is_turkish(ep_title):
-        ep_title = translate_text_safe(ep_title)
-
-    return {
-        "tmdb_id": imdb.get("moviedb_id") or imdb_id.replace("tt", ""),
-        "imdb_id": imdb_id,
-        "title": title or imdb.get("title"),
-        "year": imdb.get("releaseDetailed", {}).get("year", 0),
-        "rate": imdb.get("rating", {}).get("star", 0),
-        "description": translate_text_safe(imdb.get("plot", "")),
-        "poster": images["poster"],
-        "backdrop": images["backdrop"],
-        "logo": images["logo"],
-        "cast": imdb.get("cast", []),
-        "runtime": str(imdb.get("runtime") or ""),          
-        "genres": tur_genre_normalize(imdb.get("genre", [])),
-        "media_type": "tv",
-        "season_number": season,
-        "episode_number": episode,
-        "episode_title": ep_title, # Artık temiz değişkeni kullanıyoruz
-        "episode_backdrop": ep.get("image", ""),
-        "episode_overview": translate_text_safe(ep.get("plot", "")),
-        "episode_released": str(ep.get("released", "")),
-        "quality": quality,
-        "encoded_string": encoded_string,
-    }
+    return None
 
 # ----------------- Movie Metadata -----------------
 async def fetch_movie_metadata(title, encoded_string, year=None, quality=None, default_id=None) -> dict | None:

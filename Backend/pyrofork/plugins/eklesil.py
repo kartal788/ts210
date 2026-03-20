@@ -467,10 +467,9 @@ async def toplu_turkce_yap(client: Client, message: Message):
     await update_status(final_text, force=True)
 
 
-
 @Client.on_message(filters.command("posterturkce") & filters.private & CustomFilters.owner)
 async def toplu_poster_guncelle(client: Client, message: Message):
-    status = await message.reply_text("🖼️ **Poster güncelleme işlemi başlatılıyor...**\nTMDb ve Metahub kontrolleri yapılıyor.")
+    status = await message.reply_text("🖼️ **Poster ve Backdrop güncelleme işlemi başlatılıyor...**\nTMDb ve Metahub kontrolleri yapılıyor.")
     
     # Veritabanı sayılarını al
     total_movies = await movie_col.count_documents({"tmdb_id": {"$ne": None}})
@@ -492,29 +491,35 @@ async def toplu_poster_guncelle(client: Client, message: Message):
         except Exception:
             pass
 
-    # Yardımcı Fonksiyon: Poster Bulma Mantığı
-    async def get_best_poster(tmdb_id, media_type, imdb_id=None):
+    # Yardımcı Fonksiyon: Poster ve Backdrop Bulma Mantığı
+    async def get_best_images(tmdb_id, media_type, imdb_id=None):
         new_poster = None
+        new_backdrop = None
         try:
-            # 1. Adım: TMDb'den Türkçe (veya varsayılan) çekmeyi dene
+            # 1. Adım: TMDb'den verileri çek
             if media_type == "movie":
                 details = await tmdb.movie(tmdb_id).details()
             else:
                 details = await tmdb.tv(tmdb_id).details()
             
-            if details and details.poster_path:
-                new_poster = f"https://image.tmdb.org/t/p/w300{details.poster_path}"
+            if details:
+                if details.poster_path:
+                    new_poster = f"https://image.tmdb.org/t/p/w300{details.poster_path}"
+                if details.backdrop_path:
+                    new_backdrop = f"https://image.tmdb.org/t/p/original{details.backdrop_path}"
         
         except Exception as e:
-            LOGGER.warning(f"TMDb Poster Hatası ({tmdb_id}): {e}")
+            LOGGER.warning(f"TMDb Görsel Hatası ({tmdb_id}): {e}")
 
         # 2. Adım: TMDb başarısız olursa Metahub kullan
-        if not new_poster and imdb_id:
-            # imdb_id 'tt' ile başlamıyorsa başına ekle (metahub kuralı)
+        if imdb_id:
             clean_imdb = str(imdb_id) if str(imdb_id).startswith("tt") else f"tt{imdb_id}"
-            new_poster = f"https://images.metahub.space/poster/small/{clean_imdb}/img"
+            if not new_poster:
+                new_poster = f"https://images.metahub.space/poster/small/{clean_imdb}/img"
+            if not new_backdrop:
+                new_backdrop = f"https://images.metahub.space/background/medium/{clean_imdb}/img"
             
-        return new_poster
+        return new_poster, new_backdrop
 
     # --- FİLMLER ---
     async for movie in movie_col.find({"tmdb_id": {"$ne": None}}):
@@ -523,21 +528,27 @@ async def toplu_poster_guncelle(client: Client, message: Message):
             m_id = movie.get("tmdb_id")
             i_id = movie.get("imdb_id")
             
-            poster_url = await get_best_poster(m_id, "movie", i_id)
+            poster_url, backdrop_url = await get_best_images(m_id, "movie", i_id)
             
+            update_fields = {}
             if poster_url and poster_url != movie.get("poster"):
-                await movie_col.update_one({"_id": movie["_id"]}, {"$set": {"poster": poster_url}})
+                update_fields["poster"] = poster_url
+            if backdrop_url and backdrop_url != movie.get("backdrop"):
+                update_fields["backdrop"] = backdrop_url
+            
+            if update_fields:
+                await movie_col.update_one({"_id": movie["_id"]}, {"$set": update_fields})
                 g_film += 1
             
             await update_status(
-                f"🖼️ **Poster Güncelleme (w300)**\n\n"
+                f"🖼️ **Görsel Güncelleme (TMDb/Metahub)**\n\n"
                 f"📊 İlerleme: `{processed_count}/{total_all}`\n"
                 f"🎬 Güncellenen Film: `{g_film}`\n"
                 f"⚠️ Hatalar: `{hata}`"
             )
-            await asyncio.sleep(0.25) # API limitlerine takılmamak için hafif gecikme
+            await asyncio.sleep(0.25)
         except Exception as e:
-            LOGGER.error(f"Film Poster İşlem Hatası [{movie.get('title')}]: {e}")
+            LOGGER.error(f"Film Görsel İşlem Hatası [{movie.get('title')}]: {e}")
             hata += 1
 
     # --- DİZİLER ---
@@ -547,29 +558,35 @@ async def toplu_poster_guncelle(client: Client, message: Message):
             t_id = tv.get("tmdb_id")
             i_id = tv.get("imdb_id")
 
-            poster_url = await get_best_poster(t_id, "tv", i_id)
+            poster_url, backdrop_url = await get_best_images(t_id, "tv", i_id)
             
+            update_fields = {}
             if poster_url and poster_url != tv.get("poster"):
-                await series_col.update_one({"_id": tv["_id"]}, {"$set": {"poster": poster_url}})
+                update_fields["poster"] = poster_url
+            if backdrop_url and backdrop_url != tv.get("backdrop"):
+                update_fields["backdrop"] = backdrop_url
+            
+            if update_fields:
+                await series_col.update_one({"_id": tv["_id"]}, {"$set": update_fields})
                 g_dizi += 1
             
             await update_status(
-                f"🖼️ **Poster Güncelleme (w300)**\n\n"
+                f"🖼️ **Görsel Güncelleme (TMDb/Metahub)**\n\n"
                 f"📊 İlerleme: `{processed_count}/{total_all}`\n"
                 f"📺 Güncellenen Dizi: `{g_dizi}`\n"
                 f"⚠️ Hatalar: `{hata}`"
             )
             await asyncio.sleep(0.25)
         except Exception as e:
-            LOGGER.error(f"Dizi Poster İşlem Hatası [{tv.get('title')}]: {e}")
+            LOGGER.error(f"Dizi Görsel İşlem Hatası [{tv.get('title')}]: {e}")
             hata += 1
 
     # --- SONUÇ ---
     final_text = (
-        f"✅ **Poster Güncelleme Tamamlandı!**\n\n"
+        f"✅ **Görsel Güncelleme Tamamlandı!**\n\n"
         f"🎬 Güncellenen Film: `{g_film}`\n"
         f"📺 Güncellenen Dizi: `{g_dizi}`\n"
         f"⚠️ Toplam Hata: `{hata}`\n\n"
-        f"Tüm posterler öncelikle TMDb (TR > Default) ve yedek olarak Metahub üzerinden w300 boyutunda güncellendi."
+        f"Poster ve Backdrop'lar TMDb ve yedek olarak Metahub üzerinden güncellendi."
     )
     await update_status(final_text, force=True)

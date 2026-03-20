@@ -563,10 +563,15 @@ async def get_streams(
             "url": url
         })
 
-    # 2. Sıralama ve Düzenleme Bloğu (Aynı hizada, for ile paralel)
+# 2. Sıralama ve Düzenleme Bloğu
     streams.sort(
-        key=lambda s: get_resolution_priority(s.get("name", "")),
-        reverse=True
+        key=lambda s: (
+            # 1. Kriter: İsimde "Link" geçiyorsa 1, geçmiyorsa 0 (Link olanlar üstte olur)
+            1 if s.get("name", "").startswith("Link") else 0,
+            # 2. Kriter: Çözünürlük değeri (2160, 1080 vb.)
+            get_resolution_priority(s.get("name", ""))
+        ),
+        reverse=True # Her iki kriter için de en yüksek değer en üstte görünür
     )
 
     name_count: dict = {}

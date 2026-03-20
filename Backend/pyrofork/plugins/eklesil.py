@@ -504,7 +504,7 @@ async def toplu_poster_guncelle(client: Client, message: Message):
             
             if details:
                 if details.poster_path:
-                    new_poster = f"https://image.tmdb.org/t/p/w300{details.poster_path}"
+                    new_poster = f"https://image.tmdb.org/t/p/w500{details.poster_path}"
                 if details.backdrop_path:
                     new_backdrop = f"https://image.tmdb.org/t/p/original{details.backdrop_path}"
         

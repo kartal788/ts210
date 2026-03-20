@@ -500,7 +500,7 @@ async def toplu_turkce_yap(client: Client, message: Message):
             
             if details.poster_path:
                 # TMDb formatına uygun hale getiriyoruz (w500 standarttır)
-                new_poster = f"https://image.tmdb.org/t/p/w500{details.poster_path}"
+                new_poster = f"https://image.tmdb.org/t/p/w300{details.poster_path}"
                 
                 if new_poster != movie.get("poster"):
                     await movie_col.update_one({"_id": movie["_id"]}, {"$set": {"poster": new_poster}})
@@ -525,7 +525,7 @@ async def toplu_turkce_yap(client: Client, message: Message):
             details = await tmdb.tv(t_id).details(language="tr-TR")
 
             if details.poster_path:
-                new_poster = f"https://image.tmdb.org/t/p/w500{details.poster_path}"
+                new_poster = f"https://image.tmdb.org/t/p/300{details.poster_path}"
                 
                 if new_poster != tv.get("poster"):
                     await series_col.update_one({"_id": tv["_id"]}, {"$set": {"poster": new_poster}})

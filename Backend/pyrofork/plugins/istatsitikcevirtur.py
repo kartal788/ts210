@@ -7,6 +7,8 @@ import psutil
 from pyrogram import Client, filters, enums
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from deep_translator import GoogleTranslator
+from Backend.helper.metadata import metadata
+
 import os
 
 # ---------------- CONFIG ----------------

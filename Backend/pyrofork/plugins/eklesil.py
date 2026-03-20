@@ -498,9 +498,9 @@ async def toplu_poster_guncelle(client: Client, message: Message):
         try:
             # 1. Adım: TMDb'den Türkçe (veya varsayılan) çekmeyi dene
             if media_type == "movie":
-                details = await tmdb.movie(tmdb_id).details
+                details = await tmdb.movie(tmdb_id).details()
             else:
-                details = await tmdb.tv(tmdb_id).details
+                details = await tmdb.tv(tmdb_id).details()
             
             if details and details.poster_path:
                 new_poster = f"https://image.tmdb.org/t/p/w300{details.poster_path}"

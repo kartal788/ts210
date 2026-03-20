@@ -465,12 +465,13 @@ async def toplu_turkce_yap(client: Client, message: Message):
         f"ℹ️ *Hata ayrıntısını /log komutu ile görebilirsiniz.*"
     )
     await update_status(final_text, force=True)
-    
+
+
 @Client.on_message(filters.command("posterturkce") & filters.private & CustomFilters.owner)
 async def toplu_poster_guncelle(client: Client, message: Message):
     status = await message.reply_text("🖼️ **Poster güncelleme işlemi başlatılıyor...**\nTMDb verileri kontrol ediliyor.")
     
-    # Sayıları al
+    # Veritabanı sayılarını al
     total_movies = await movie_col.count_documents({"tmdb_id": {"$ne": None}})
     total_series = await series_col.count_documents({"tmdb_id": {"$ne": None}})
     total_all = total_movies + total_series
@@ -495,22 +496,25 @@ async def toplu_poster_guncelle(client: Client, message: Message):
         processed_count += 1
         try:
             m_id = movie.get("tmdb_id")
+            # TMDb'den Türkçe veriyi çekiyoruz
             details = await tmdb.movie(m_id).details(language="tr-TR")
             
             if details.poster_path:
-                new_poster = f"https://image.tmdb.org/t/p/w500{details.poster_path}"
+                # Boyutu w300 olarak ayarlıyoruz
+                new_poster = f"https://image.tmdb.org/t/p/w300{details.poster_path}"
                 
+                # Eğer mevcut poster metahub ise veya farklıysa güncelle
                 if new_poster != movie.get("poster"):
                     await movie_col.update_one({"_id": movie["_id"]}, {"$set": {"poster": new_poster}})
                     g_film += 1
             
             await update_status(
-                f"🖼️ **Poster Güncelleme**\n\n"
+                f"🖼️ **Poster Güncelleme (w300)**\n\n"
                 f"📊 İlerleme: `{processed_count}/{total_all}`\n"
                 f"🎬 Güncellenen Film: `{g_film}`\n"
                 f"⚠️ Hatalar: `{hata}`"
             )
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.2) 
         except Exception as e:
             LOGGER.error(f"Film Poster Hatası [{movie.get('title')}]: {e}")
             hata += 1
@@ -519,18 +523,19 @@ async def toplu_poster_guncelle(client: Client, message: Message):
     async for tv in series_col.find({"tmdb_id": {"$ne": None}}):
         processed_count += 1
         try:
-            t_id = tv.get("tv_id") # Not: metadata.py yapına göre tmdb_id veya tv_id olabilir
+            t_id = tv.get("tmdb_id") # JSON dosyana göre burası da tmdb_id
             details = await tmdb.tv(t_id).details(language="tr-TR")
 
             if details.poster_path:
-                new_poster = f"https://image.tmdb.org/t/p/w500{details.poster_path}"
+                # Boyutu w300 olarak ayarlıyoruz
+                new_poster = f"https://image.tmdb.org/t/p/w300{details.poster_path}"
                 
                 if new_poster != tv.get("poster"):
                     await series_col.update_one({"_id": tv["_id"]}, {"$set": {"poster": new_poster}})
                     g_dizi += 1
             
             await update_status(
-                f"🖼️ **Poster Güncelleme**\n\n"
+                f"🖼️ **Poster Güncelleme (w300)**\n\n"
                 f"📊 İlerleme: `{processed_count}/{total_all}`\n"
                 f"📺 Güncellenen Dizi: `{g_dizi}`\n"
                 f"⚠️ Hatalar: `{hata}`"
@@ -540,10 +545,12 @@ async def toplu_poster_guncelle(client: Client, message: Message):
             LOGGER.error(f"Dizi Poster Hatası [{tv.get('title')}]: {e}")
             hata += 1
 
+    # --- SONUÇ ---
     final_text = (
         f"✅ **Poster Güncelleme Tamamlandı!**\n\n"
         f"🎬 Güncellenen Film: `{g_film}`\n"
         f"📺 Güncellenen Dizi: `{g_dizi}`\n"
-        f"⚠️ Toplam Hata: `{hata}`"
+        f"⚠️ Toplam Hata: `{hata}`\n\n"
+        f"Tüm Metahub linkleri TMDb w300 Türkçe afişlerle değiştirildi."
     )
     await update_status(final_text, force=True)

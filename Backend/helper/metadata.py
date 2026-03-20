@@ -199,7 +199,6 @@ def translate_text_safe(text: str) -> str:
 
     text = str(text).strip()
 
-    # çok kısa metinleri çevirmiyoruz
     if len(text) < 3:
         return text
 
@@ -214,6 +213,13 @@ def translate_text_safe(text: str) -> str:
     TRANSLATE_CACHE[text] = translated
     return translated
 
+
+# 🔽 BURAYA EKLE
+def is_turkish(text: str) -> bool:
+    if not text:
+        return False
+    tr_chars = "çğıöşüÇĞİÖŞÜ"
+    return any(c in text for c in tr_chars)
 def tur_genre_normalize(genres):
     if not genres:
         return []
@@ -415,12 +421,31 @@ async def fetch_tv_metadata(title, season, episode, encoded_string, year=None, q
         return {
             "tmdb_id": tv.id,
             "imdb_id": getattr(getattr(tv, "external_ids", None), "imdb_id", None),
-            "title": tv.name or tv.original_name or title,
+            tmdb_title = tv.name or ""
+            original_title = tv.original_name or title
+
+            if not is_turkish(tmdb_title):
+                tmdb_title = translate_text_safe(tmdb_title or original_title)
+
+            "title": tmdb_title,
             "year": getattr(tv.first_air_date, "year", 0) if getattr(tv, "first_air_date", None) else 0,
             "rate": getattr(tv, "vote_average", 0) or 0,
-            "description": translate_text_safe(tv.overview),
-            "poster": format_tmdb_image(tv.poster_path),
-            "backdrop": format_tmdb_image(tv.backdrop_path, "original"),
+            overview = tv.overview or ""
+            if not is_turkish(overview):
+                overview = translate_text_safe(overview)
+            "description": overview,
+# --- IMAGE FALLBACK (TMDb -> Metahub) ---
+            imdb_ref = getattr(getattr(tv, "external_ids", None), "imdb_id", None)
+            images = format_imdb_images(imdb_ref)
+
+            poster = format_tmdb_image(tv.poster_path)
+            backdrop = format_tmdb_image(tv.backdrop_path, "original")
+
+            if not poster:
+                poster = images["poster"]
+
+            if not backdrop:
+                backdrop = images["backdrop"]
             "logo": get_tmdb_logo(getattr(tv, "images", None)),
             "genres": tur_genre_normalize([g.name for g in (tv.genres or [])]),
             "media_type": "tv",
@@ -431,7 +456,7 @@ async def fetch_tv_metadata(title, season, episode, encoded_string, year=None, q
             "episode_number": episode,
             "episode_title": translate_text_safe(getattr(ep, "name", f"S{season}E{episode}")) if ep else f"S{season}E{episode}",
             "episode_backdrop": format_tmdb_image(getattr(ep, "still_path", None), "original") if ep else "",
-           "episode_overview": translate_text_safe(getattr(ep, "overview", "")) if ep else "",
+            "episode_overview": translate_text_safe(getattr(ep, "overview", "")) if ep else "",
             "episode_released": (
                 ep.air_date.strftime("%Y-%m-%dT05:00:00.000Z")
                 if getattr(ep, "air_date", None)
@@ -467,7 +492,12 @@ async def fetch_tv_metadata(title, season, episode, encoded_string, year=None, q
 
         "season_number": season,
         "episode_number": episode,
-        "episode_title": translate_text_safe(ep.get("title", f"S{season}E{episode}")),
+        ep_title = getattr(ep, "name", f"S{season}E{episode}")
+
+        if not is_turkish(ep_title):
+            ep_title = translate_text_safe(ep_title)
+
+        "episode_title": ep_title,
         "episode_backdrop": ep.get("image", ""),
         "episode_overview": translate_text_safe(ep.get("plot", "")),
         "episode_released": str(ep.get("released", "")),
@@ -571,12 +601,32 @@ async def fetch_movie_metadata(title, encoded_string, year=None, quality=None, d
         return {
             "tmdb_id": movie.id,
             "imdb_id": getattr(movie.external_ids, "imdb_id", None),
-            "title": movie.title or movie.original_title or title,
+            tmdb_title = movie.title or ""
+            original_title = movie.original_title or title
+           
+            if not is_turkish(tmdb_title):
+                tmdb_title = translate_text_safe(tmdb_title or original_title)
+
+            "title": tmdb_title,
             "year": getattr(movie.release_date, "year", 0) if getattr(movie, "release_date", None) else 0,
             "rate": getattr(movie, "vote_average", 0) or 0,
-            "description": translate_text_safe(movie.overview),
-            "poster": format_tmdb_image(movie.poster_path),
-            "backdrop": format_tmdb_image(movie.backdrop_path, "original"),
+             overview = movie.overview or ""
+             if not is_turkish(overview):
+                 overview = translate_text_safe(overview)
+            "description": overview,
+            images = format_imdb_images(getattr(movie.external_ids, "imdb_id", None))
+
+            poster = format_tmdb_image(movie.poster_path)
+            backdrop = format_tmdb_image(movie.backdrop_path, "original")
+
+            if not poster:
+                poster = images["poster"]
+
+            if not backdrop:
+                backdrop = images["backdrop"]
+
+            "poster": poster,
+            "backdrop": backdrop,
             "logo": get_tmdb_logo(getattr(movie, "images", None)),
             "cast": cast_names,
             "runtime": str(runtime),
@@ -598,7 +648,10 @@ async def fetch_movie_metadata(title, encoded_string, year=None, quality=None, d
         "title": imdb.get("title") or title,
         "year": imdb.get("releaseDetailed", {}).get("year", 0),
         "rate": imdb.get("rating", {}).get("star", 0),
-        "description": translate_text_safe(imdb.get("plot", "")),
+        plot = imdb.get("plot", "") or ""
+        if not is_turkish(plot):
+            plot = translate_text_safe(plot)
+        "description": plot,
         "poster": images["poster"],
         "backdrop": images["backdrop"],
         "logo": images["logo"],

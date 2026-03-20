@@ -116,9 +116,70 @@ def translate_batch_worker(batch_docs):
 
 
 # ---------------- /cevir ----------------
+# ---------------- TRANSLATE & METADATA WORKER ----------------
+async def translate_batch_worker_v2(batch_docs):
+    """
+    Her bir belge için metadata.py'deki metadata fonksiyonunu çağırır.
+    Eğer gelen veri Türkçe değilse çeviri yapar ve veritabanını günceller.
+    """
+    results = []
+    errors = []
+    
+    # metadata.py'den gerekli fonksiyonun import edildiğini varsayıyoruz
+    # from Backend.helper.metadata import metadata 
+
+    for doc in batch_docs:
+        _id = doc.get("_id")
+        title_main = doc.get("title") or doc.get("name") or "Bilinmeyen"
+        file_name = doc.get("file_name") or title_main # Veritabanında dosya adı varsa kullanılır
+        
+        try:
+            upd = {}
+            # Metadata fonksiyonunu çağır (override_id olarak mevcut tmdb/imdb id gönderiyoruz)
+            current_id = doc.get("tmdb_id") or doc.get("imdb_id")
+            meta = await metadata(file_name, 0, 0, override_id=str(current_id))
+
+            if meta:
+                # Film veya Dizi Genel Bilgileri
+                upd["title"] = meta.get("title")
+                upd["description"] = meta.get("description")
+                upd["genres"] = meta.get("genres")
+                upd["poster"] = meta.get("poster")
+                upd["backdrop"] = meta.get("backdrop")
+                upd["rate"] = meta.get("rate")
+                
+                # Eğer dizi ise sezon/bölüm detaylarını güncelle
+                if "seasons" in doc and "seasons" in meta:
+                    # Burada metadata fonksiyonu tek bir bölüm döner (S01E01 gibi)
+                    # Mevcut sezon yapısı içindeki ilgili bölümü bulup güncelliyoruz
+                    seasons = doc.get("seasons")
+                    s_num = meta.get("season_number")
+                    e_num = meta.get("episode_number")
+                    
+                    for s in seasons:
+                        if s.get("season_number") == s_num:
+                            for ep in s.get("episodes", []):
+                                if ep.get("episode_number") == e_num:
+                                    ep["title"] = meta.get("episode_title")
+                                    ep["overview"] = meta.get("episode_overview")
+                                    ep["cevrildi"] = True
+                    upd["seasons"] = seasons
+
+                upd["cevrildi"] = True
+                results.append((_id, upd))
+            else:
+                errors.append(f"ID: {_id} | {title_main} için metadata bulunamadı.")
+                
+        except Exception as e:
+            errors.append(f"ID: {_id} | Hata: {str(e)}")
+
+    return results, errors
+
+
+# ---------------- /cevir ----------------
 @Client.on_message(filters.command("cevir") & filters.private & filters.user(OWNER_ID))
 async def cevir(client: Client, message: Message):
-    global stop_event, is_running
+    global is_running, stop_event
 
     if is_running:
         await message.reply_text("⛔ Zaten devam eden bir işlem var.")
@@ -128,156 +189,92 @@ async def cevir(client: Client, message: Message):
     stop_event.clear()
 
     start_msg = await message.reply_text(
-        "🇹🇷 Türkçe çeviri hazırlanıyor...\nİlerleme tek mesajda gösterilecektir.",
+        "🔄 **Metadata Yenileme & Çeviri Başlatıldı...**\nVeriler `metadata.py` üzerinden güncelleniyor.",
         parse_mode=enums.ParseMode.MARKDOWN,
     )
 
     start_time = time.time()
-
-    # ---------------- TOPLAM HESAPLAMA ----------------
-    movies_to_translate = movie_col.count_documents({})
-    episodes_to_translate = 0
-    for doc in series_col.find({}, {"seasons.episodes": 1}):
-        for season in doc.get("seasons", []):
-            episodes_to_translate += len(season.get("episodes", []))
-
-    total_to_translate = movies_to_translate + episodes_to_translate
     translated_movies = 0
     translated_episodes = 0
     error_count = 0
 
+    # Toplam sayıları al
+    movies_to_translate = movie_col.count_documents({"cevrildi": {"$ne": True}})
+    series_to_translate = series_col.count_documents({"cevrildi": {"$ne": True}})
+    total_to_translate = movies_to_translate + series_to_translate
+
     collections = [
-        {"col": movie_col, "type": "film", "translated": 0, "errors_list": []},
-        {"col": series_col, "type": "episode", "translated": 0, "errors_list": []},
+        {"col": movie_col, "type": "film"},
+        {"col": series_col, "type": "serie"}
     ]
 
-    batch_size = 50
-    workers = 4
-    pool = ThreadPoolExecutor(max_workers=workers)
-    loop = asyncio.get_event_loop()
-    last_update = time.time()
     update_interval = 10
+    last_update = time.time()
 
     try:
         for c in collections:
             col = c["col"]
-            docs_cursor = col.find({}, {"_id": 1})
-            ids = [d["_id"] for d in docs_cursor]
+            # Sadece henüz çevrilmemiş veya güncellenmesi gerekenleri çek
+            ids = [d["_id"] for d in col.find({"cevrildi": {"$ne": True}}, {"_id": 1})]
+            
             idx = 0
+            batch_size = 10 # Metadata API çağrısı yaptığı için batch boyutunu küçük tutuyoruz
 
             while idx < len(ids):
-                if not is_running: # Eğer kullanıcı /durdur dediyse döngüden çık
+                if not is_running:
                     await start_msg.edit_text("⛔ İşlem kullanıcı tarafından durduruldu.")
-                    return # İşlemi sonlandır
-                    
+                    return
+
                 batch_ids = ids[idx: idx + batch_size]
                 batch_docs = list(col.find({"_id": {"$in": batch_ids}}))
 
-                # Worker çağrısı
-                results, errors = await loop.run_in_executor(pool, translate_batch_worker, batch_docs)
+                # Metadata Worker Çağrısı
+                results, errors = await translate_batch_worker_v2(batch_docs)
 
                 for _id, upd in results:
-                    try:
-                        col.update_one({"_id": _id}, {"$set": upd})
-                        if c["type"] == "film":
-                            translated_movies += 1
-                        else:
-                            seasons = upd.get("seasons", [])
-                            ep_count = sum(len(s.get("episodes", [])) for s in seasons)
-                            translated_episodes += ep_count
-                    except:
-                        errors.append(f"ID: {_id} | DB Güncelleme Hatası")
+                    col.update_one({"_id": _id}, {"$set": upd})
+                    if c["type"] == "film":
+                        translated_movies += 1
+                    else:
+                        translated_episodes += 1
 
                 error_count += len(errors)
-                c["errors_list"].extend(errors)
                 idx += len(batch_ids)
 
-                # ---------------- CPU / RAM ----------------
-                cpu = psutil.cpu_percent(interval=None)
-                ram = psutil.virtual_memory().percent
-
-                # ---------------- SÜRE HESAPLAMA ----------------
-                elapsed = int(time.time() - start_time)
-                h, rem = divmod(elapsed, 3600)
-                m, s = divmod(rem, 60)
-                elapsed_str = f"{h}s{m}d{s}s"
-
-                remaining = (movies_to_translate - translated_movies) + (episodes_to_translate - translated_episodes)
-                eta_str = "hesaplanıyor"
-                if translated_movies + translated_episodes > 0:
-                    avg = elapsed / (translated_movies + translated_episodes)
-                    eta_sec = int(avg * remaining)
-                    eh, er = divmod(eta_sec, 3600)
-                    em, es = divmod(er, 60)
-                    eta_str = f"{eh}s{em}d{es}s"
-
-                if time.time() - last_update >= update_interval or idx >= len(ids):
+                # Arayüz Güncelleme
+                if time.time() - last_update >= update_interval:
                     last_update = time.time()
-                    try:
-                        await start_msg.edit_text(
-                            (
-                                f"🇹🇷 Türkçe çeviri yapılıyor.\n\n"
-                                f"Toplam: {total_to_translate} (Film {movies_to_translate} | Bölüm {episodes_to_translate})\n"
-                                f"Çevrilen: Film {translated_movies} | Bölüm {translated_episodes}\n"
-                                f"Kalan: Film {movies_to_translate - translated_movies} | Bölüm {episodes_to_translate - translated_episodes}\n"
-                                f"Hatalı: {error_count}\n"
-                                f"{progress_bar(translated_movies + translated_episodes, total_to_translate)}\n\n"
-                                f"Süre: `{elapsed_str}` (`{eta_str}`)\n\n"
-                                f"┟ CPU → {cpu}%\n"
-                                f"┖ RAM → {ram}%\n\n"
-                                f"🛑 İşlemi durdurmak için: /durdur" # Yeni eklenen satır
-                            ),
-                            parse_mode=enums.ParseMode.MARKDOWN,
-                        )
-                    except:
-                        pass
+                    elapsed = int(time.time() - start_time)
+                    cpu = psutil.cpu_percent()
+                    ram = psutil.virtual_memory().percent
+                    
+                    progress = progress_bar(translated_movies + translated_episodes, total_to_translate)
+                    
+                    await start_msg.edit_text(
+                        f"🇹🇷 **Türkçe Veri Güncelleme**\n\n"
+                        f"Koleksiyon: `{c['type'].upper()}`\n"
+                        f"Güncellenen: {translated_movies + translated_episodes} / {total_to_translate}\n"
+                        f"Hatalı: {error_count}\n\n"
+                        f"{progress}\n\n"
+                        f"⏱ Süre: {format_time_custom(elapsed)}\n"
+                        f"┟ CPU: %{cpu} | RAM: %{ram}\n"
+                        f"🛑 Durdurmak için: `/durdur`",
+                        parse_mode=enums.ParseMode.MARKDOWN
+                    )
+
+    except Exception as e:
+        await message.reply_text(f"❌ Kritik Hata: {str(e)}")
     finally:
-        pool.shutdown(wait=False)
         is_running = False
-
-    # ---------------- FINAL ÖZET ----------------
-    total_duration = int(time.time() - start_time)
-    h, rem = divmod(total_duration, 3600)
-    m, s = divmod(rem, 60)
-    duration_str = f"{h}s{m}d{s}s"
-
-    cpu = psutil.cpu_percent(interval=1)
-    ram = psutil.virtual_memory().percent
-
-    await start_msg.edit_text(
-        (
-            "📊 **Genel Özet**\n\n"
-            f"Toplam: {total_to_translate} (Film {movies_to_translate} | Bölüm {episodes_to_translate})\n"
-            f"Çevrilen: Film {translated_movies} | Bölüm {translated_episodes}\n"
-            f"Kalan: Film {movies_to_translate - translated_movies} | Bölüm {episodes_to_translate - translated_episodes}\n"
-            f"Hatalı: {error_count}\n"
-            f"Süre: {duration_str}\n\n"
-            f"CPU: {cpu}% | RAM: {ram}%"
-        ),
-        parse_mode=enums.ParseMode.MARKDOWN
-    )
-
-    # -------- HATA DOSYASI --------
-    hata_icerigi = []
-    for c in collections:
-        if c["errors_list"]:
-            hata_icerigi.append(f"*** {c['col'].name} Hataları ***")
-            hata_icerigi.extend(c["errors_list"])
-            hata_icerigi.append("")
-
-    if hata_icerigi:
-        log_path = "cevirhatalari.txt"
-        with open(log_path, "w", encoding="utf-8") as f:
-            f.write("\n".join(hata_icerigi))
-        try:
-            await client.send_document(
-                chat_id=OWNER_ID,
-                document=log_path,
-                caption="⛔ Çeviri sırasında hatalar oluştu"
-            )
-        except:
-            pass
-
+        total_duration = format_time_custom(time.time() - start_time)
+        await start_msg.edit_text(
+            f"✅ **İşlem Tamamlandı**\n\n"
+            f"🎬 Toplam Film: {translated_movies}\n"
+            f"📺 Toplam Dizi/Bölüm: {translated_episodes}\n"
+            f"⚠️ Hata Sayısı: {error_count}\n"
+            f"⏱ Toplam Süre: {total_duration}",
+            parse_mode=enums.ParseMode.MARKDOWN
+        )
 
 # ---------------- /TUR ----------------
 @Client.on_message(filters.command("tur") & filters.private & filters.user(OWNER_ID))

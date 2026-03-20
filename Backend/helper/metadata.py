@@ -64,7 +64,7 @@ GENRE_TUR_ALIASES = {
 API_SEMAPHORE = asyncio.Semaphore(12)
 
 # ----------------- Helpers -----------------
-def format_tmdb_image(path: str, size="w500") -> str:
+def format_tmdb_image(path: str, size="w300") -> str:
     if not path:
         return ""
     return f"https://image.tmdb.org/t/p/{size}{path}"

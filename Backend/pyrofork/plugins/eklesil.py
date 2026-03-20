@@ -466,6 +466,8 @@ async def toplu_turkce_yap(client: Client, message: Message):
     )
     await update_status(final_text, force=True)
 
+
+
 @Client.on_message(filters.command("posterturkce") & filters.private & CustomFilters.owner)
 async def toplu_poster_guncelle(client: Client, message: Message):
     status = await message.reply_text("🖼️ **Poster güncelleme işlemi başlatılıyor...**\nTMDb ve Metahub kontrolleri yapılıyor.")

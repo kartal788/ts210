@@ -147,7 +147,6 @@ async def _tmdb_movie_details(movie_id):
     try:
         async with API_SEMAPHORE:
             details = await tmdb.movie(movie_id).details(
-                language="tr-TR",
                 append_to_response="external_ids,credits"
             )
             images = await tmdb.movie(movie_id).images()
@@ -167,7 +166,6 @@ async def _tmdb_tv_details(tv_id):
     try:
         async with API_SEMAPHORE:
             details = await tmdb.tv(tv_id).details(
-                language="tr-TR",
                 append_to_response="external_ids,credits"
             )
             images = await tmdb.tv(tv_id).images()
@@ -186,7 +184,7 @@ async def _tmdb_episode_details(tv_id, season, episode):
         return EPISODE_CACHE[key]
     try:
         async with API_SEMAPHORE:
-            details = await tmdb.episode(tv_id, season, episode).details(language="tr-TR")
+            details = await tmdb.episode(tv_id, season, episode).details()
         EPISODE_CACHE[key] = details
         return details
     except Exception:

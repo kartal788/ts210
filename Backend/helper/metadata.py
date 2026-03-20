@@ -473,12 +473,18 @@ async def fetch_tv_metadata(title, season, episode, encoded_string, year=None, q
         }
 
     # =======================================================
+    
+    # =======================================================
     #  6. IMDb MODE
     # =======================================================
     imdb = imdb_tv or {}
     ep = imdb_ep or {}
-
     images = format_imdb_images(imdb_id)
+
+    # Mantığı sözlük dışına çıkarıyoruz
+    ep_title = ep.get("name") if ep else f"S{season}E{episode}"
+    if ep_title and not is_turkish(ep_title):
+        ep_title = translate_text_safe(ep_title)
 
     return {
         "tmdb_id": imdb.get("moviedb_id") or imdb_id.replace("tt", ""),
@@ -494,23 +500,15 @@ async def fetch_tv_metadata(title, season, episode, encoded_string, year=None, q
         "runtime": str(imdb.get("runtime") or ""),          
         "genres": tur_genre_normalize(imdb.get("genre", [])),
         "media_type": "tv",
-
         "season_number": season,
         "episode_number": episode,
-        ep_title = getattr(ep, "name", f"S{season}E{episode}")
-
-        if not is_turkish(ep_title):
-            ep_title = translate_text_safe(ep_title)
-
-        "episode_title": ep_title,
+        "episode_title": ep_title, # Artık temiz değişkeni kullanıyoruz
         "episode_backdrop": ep.get("image", ""),
         "episode_overview": translate_text_safe(ep.get("plot", "")),
         "episode_released": str(ep.get("released", "")),
-
         "quality": quality,
         "encoded_string": encoded_string,
     }
-
 
 # ----------------- Movie Metadata -----------------
 async def fetch_movie_metadata(title, encoded_string, year=None, quality=None, default_id=None) -> dict | None:
@@ -652,16 +650,18 @@ async def fetch_movie_metadata(title, encoded_string, year=None, quality=None, d
     images = format_imdb_images(imdb_id)
     imdb = imdb_details or {}
 
+    # Mantığı sözlük dışına çıkarıyoruz
+    plot_text = imdb.get("plot", "") or ""
+    if plot_text and not is_turkish(plot_text):
+        plot_text = translate_text_safe(plot_text)
+
     return {
         "tmdb_id": imdb.get("moviedb_id") or imdb_id.replace("tt", ""),
         "imdb_id": imdb_id,
         "title": imdb.get("title") or title,
         "year": imdb.get("releaseDetailed", {}).get("year", 0),
         "rate": imdb.get("rating", {}).get("star", 0),
-        plot = imdb.get("plot", "") or ""
-        if not is_turkish(plot):
-            plot = translate_text_safe(plot)
-        "description": plot,
+        "description": plot_text,
         "poster": images["poster"],
         "backdrop": images["backdrop"],
         "logo": images["logo"],

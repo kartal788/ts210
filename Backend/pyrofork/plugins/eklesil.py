@@ -378,37 +378,29 @@ async def calismayan_linkleri_sil(client: Client, message: Message):
 def format_time(seconds):
     """Saniyeyi HH:MM:SS formatına çevirir."""
     return time.strftime("%H:%M:%S", time.gmtime(seconds))
+    
+# ------------------ /TURKCE (Toplu Güncelleme) ------------------
+
+async def update_status_safe(status_msg, new_text):
+    """Mesaj içeriği aynıysa düzenleme yapmaz, FloodWait ve hataları yönetir."""
+    if status_msg.text == new_text:
+        return
+    try:
+        await status_msg.edit_text(new_text)
+    except FloodWait as e:
+        await asyncio.sleep(e.value)
+    except Exception:
+        pass
 
 @Client.on_message(filters.command("turkcebaslik") & filters.private & CustomFilters.owner)
 async def toplu_turkce_yap(client: Client, message: Message):
     status = await message.reply_text("🔄 **İşlem başlatılıyor...**\nVeritabanı taranıyor.")
     
-    # Toplam sayıları çekelim
     total_movies = await movie_col.count_documents({"tmdb_id": {"$ne": None}})
     total_series = await series_col.count_documents({"tmdb_id": {"$ne": None}})
     total_all = total_movies + total_series
     
     processed_count, g_film, g_dizi, hata = 0, 0, 0, 0
-    last_update_time = time.time()
-
-    async def update_status(text, force=False):
-        nonlocal last_update_time
-        if not force and (time.time() - last_update_time < 15):
-            return
-        try:
-            await status.edit_text(text)
-            last_update_time = time.time()
-        except FloodWait as e:
-            await asyncio.sleep(e.value)
-        except Exception:
-            pass
-
-    async def log_error(type_, doc, err):
-        nonlocal hata
-        hata += 1
-        # Sadece merkezi log sistemine (log.txt ve konsol) yazar
-        log_msg = f"[{type_}] ID: {doc.get('_id')} | TMDB: {doc.get('tmdb_id')} | Hata: {err}"
-        LOGGER.error(log_msg)
 
     # --- FİLMLER ---
     async for movie in movie_col.find({"tmdb_id": {"$ne": None}}):
@@ -422,16 +414,19 @@ async def toplu_turkce_yap(client: Client, message: Message):
                 await movie_col.update_one({"_id": movie["_id"]}, {"$set": {"title": tr_title}})
                 g_film += 1
             
-            await update_status(
+            # Her işlemden sonra 15 saniye bekleme
+            await asyncio.sleep(15)
+            
+            await update_status_safe(status, 
                 f"🔄 **Türkçe Başlık Güncelleme**\n\n"
                 f"📊 İlerleme: `{processed_count}/{total_all}`\n"
                 f"⏳ Kalan: `{total_all - processed_count}`\n\n"
                 f"🎬 Güncellenen: `{g_film}`\n"
                 f"⚠️ Hatalar: `{hata}`"
             )
-            await asyncio.sleep(0.2) 
         except Exception as e:
-            await log_error("FİLM", movie, str(e))
+            hata += 1
+            LOGGER.error(f"Başlık Hatası: {e}")
 
     # --- DİZİLER ---
     async for tv in series_col.find({"tmdb_id": {"$ne": None}}):
@@ -445,179 +440,109 @@ async def toplu_turkce_yap(client: Client, message: Message):
                 await series_col.update_one({"_id": tv["_id"]}, {"$set": {"title": tr_title}})
                 g_dizi += 1
             
-            await update_status(
+            # Her işlemden sonra 15 saniye bekleme
+            await asyncio.sleep(15)
+
+            await update_status_safe(status,
                 f"🔄 **Türkçe Başlık Güncelleme**\n\n"
                 f"📊 İlerleme: `{processed_count}/{total_all}`\n"
                 f"⏳ Kalan: `{total_all - processed_count}`\n\n"
                 f"📺 Güncellenen: `{g_dizi}`\n"
                 f"⚠️ Hatalar: `{hata}`"
             )
-            await asyncio.sleep(0.2)
         except Exception as e:
-            await log_error("DİZİ", tv, str(e))
+            hata += 1
+            LOGGER.error(f"Başlık Hatası: {e}")
 
-    # --- SONUÇ ---
-    final_text = (
-        f"✅ **İşlem Tamamlandı!**\n\n"
-        f"🎬 Toplam Film: `{g_film}`\n"
-        f"📺 Toplam Dizi: `{g_dizi}`\n"
-        f"⚠️ Toplam Hata: `{hata}`\n\n"
-        f"ℹ️ *Hata ayrıntısını /log komutu ile görebilirsiniz.*"
-    )
-    await update_status(final_text, force=True)
+    await update_status_safe(status, f"✅ **Başlık Güncelleme Tamamlandı!**\n🎬 Film: `{g_film}`\n📺 Dizi: `{g_dizi}`")
 
 
 @Client.on_message(filters.command("posterturkce") & filters.private & CustomFilters.owner)
 async def toplu_poster_guncelle(client: Client, message: Message):
-    status = await message.reply_text("🖼️ **Türkçe Afiş ve Logo Kontrolü Başlatıldı...**\nSadece TMDb'de 'tr' etiketli görsel/logo varsa güncellenecektir.")
+    status = await message.reply_text("🖼️ **Türkçe Afiş ve Logo Kontrolü Başlatıldı...**")
     
     total_movies = await movie_col.count_documents({"tmdb_id": {"$ne": None}})
     total_series = await series_col.count_documents({"tmdb_id": {"$ne": None}})
     total_all = total_movies + total_series
     
     processed_count, g_film, g_dizi, hata = 0, 0, 0, 0
-    last_update_time = time.time()
 
-    async def update_status(text, force=False):
-        nonlocal last_update_time
-        if not force and (time.time() - last_update_time < 15):
-            return
-        try:
-            await status.edit_text(text)
-            last_update_time = time.time()
-        except FloodWait as e:
-            await asyncio.sleep(e.value)
-        except Exception:
-            pass
-
-    # Yardımcı Fonksiyon: SADECE Türkçe Poster, Backdrop ve Logo Bulma
     async def get_tr_images(tmdb_id, media_type):
-        tr_poster = None
-        tr_backdrop = None
-        tr_logo = None
+        tr_poster, tr_backdrop, tr_logo = None, None, None
         try:
-            if media_type == "movie":
-                img_data = await tmdb.movie(tmdb_id).images()
-            else:
-                img_data = await tmdb.tv(tmdb_id).images()
-            
+            img_data = await tmdb.movie(tmdb_id).images() if media_type == "movie" else await tmdb.tv(tmdb_id).images()
             if img_data:
-                # 1. Türkçe Poster
-                if hasattr(img_data, 'posters') and img_data.posters:
+                if hasattr(img_data, 'posters'):
                     for p in img_data.posters:
                         if getattr(p, 'iso_639_1', None) == "tr":
-                            tr_poster = f"https://image.tmdb.org/t/p/w500{p.file_path}"
-                            break
-                
-                # 2. Türkçe Backdrop
-                if hasattr(img_data, 'backdrops') and img_data.backdrops:
+                            tr_poster = f"https://image.tmdb.org/t/p/w300{p.file_path}"; break
+                if hasattr(img_data, 'backdrops'):
                     for b in img_data.backdrops:
                         if getattr(b, 'iso_639_1', None) == "tr":
-                            tr_backdrop = f"https://image.tmdb.org/t/p/original{b.file_path}"
-                            break
-
-                # 3. Türkçe Logo
-                if hasattr(img_data, 'logos') and img_data.logos:
+                            tr_backdrop = f"https://image.tmdb.org/t/p/original{b.file_path}"; break
+                if hasattr(img_data, 'logos'):
                     for l in img_data.logos:
                         if getattr(l, 'iso_639_1', None) == "tr":
-                            tr_logo = f"https://image.tmdb.org/t/p/w300{l.file_path}"
-                            break
-        except Exception as e:
-            LOGGER.warning(f"TMDb Görsel Hatası ({tmdb_id}): {e}")
+                            tr_logo = f"https://image.tmdb.org/t/p/w300{l.file_path}"; break
+        except: pass
         return tr_poster, tr_backdrop, tr_logo
 
     # --- FİLMLER ---
     async for movie in movie_col.find({"tmdb_id": {"$ne": None}}):
         processed_count += 1
         try:
-            m_id = movie.get("tmdb_id")
-            tr_p, tr_b, tr_l = await get_tr_images(m_id, "movie")
-            
+            tr_p, tr_b, tr_l = await get_tr_images(movie.get("tmdb_id"), "movie")
             update_fields = {}
-            if tr_p and tr_p != movie.get("poster"):
-                update_fields["poster"] = tr_p
-            if tr_b and tr_b != movie.get("backdrop"):
-                update_fields["backdrop"] = tr_b
-            if tr_l and tr_l != movie.get("logo"):
-                update_fields["logo"] = tr_l
+            if tr_p and tr_p != movie.get("poster"): update_fields["poster"] = tr_p
+            if tr_b and tr_b != movie.get("backdrop"): update_fields["backdrop"] = tr_b
+            if tr_l and tr_l != movie.get("logo"): update_fields["logo"] = tr_l
             
             if update_fields:
                 await movie_col.update_one({"_id": movie["_id"]}, {"$set": update_fields})
                 g_film += 1
             
-            await update_status(
-                f"🖼️ **Türkçe Görsel/Logo Güncelleme**\n\n"
-                f"📊 İlerleme: `{processed_count}/{total_all}`\n"
-                f"🎬 Güncellenen Film: `{g_film}`\n"
-                f"⚠️ Hatalar: `{hata}`"
-            )
-            await asyncio.sleep(0.2)
-        except Exception as e:
-            hata += 1
+            await asyncio.sleep(15) # 15 Saniye Bekleme
+            await update_status_safe(status, f"🖼️ **Görsel Güncelleme**\n📊 İlerleme: `{processed_count}/{total_all}`\n🎬 Film: `{g_film}`")
+        except: hata += 1
 
     # --- DİZİLER ---
     async for tv in series_col.find({"tmdb_id": {"$ne": None}}):
         processed_count += 1
         try:
-            t_id = tv.get("tmdb_id")
-            tr_p, tr_b, tr_l = await get_tr_images(t_id, "tv")
-            
+            tr_p, tr_b, tr_l = await get_tr_images(tv.get("tmdb_id"), "tv")
             update_fields = {}
-            if tr_p and tr_p != tv.get("poster"):
-                update_fields["poster"] = tr_p
-            if tr_b and tr_b != tv.get("backdrop"):
-                update_fields["backdrop"] = tr_b
-            if tr_l and tr_l != tv.get("logo"):
-                update_fields["logo"] = tr_l
+            if tr_p and tr_p != tv.get("poster"): update_fields["poster"] = tr_p
+            if tr_b and tr_b != tv.get("backdrop"): update_fields["backdrop"] = tr_b
+            if tr_l and tr_l != tv.get("logo"): update_fields["logo"] = tr_l
             
             if update_fields:
                 await series_col.update_one({"_id": tv["_id"]}, {"$set": update_fields})
                 g_dizi += 1
             
-            await update_status(
-                f"🖼️ **Türkçe Görsel/Logo Güncelleme**\n\n"
-                f"📊 İlerleme: `{processed_count}/{total_all}`\n"
-                f"📺 Güncellenen Dizi: `{g_dizi}`\n"
-                f"⚠️ Hatalar: `{hata}`"
-            )
-            await asyncio.sleep(0.2)
-        except Exception as e:
-            hata += 1
+            await asyncio.sleep(15) # 15 Saniye Bekleme
+            await update_status_safe(status, f"🖼️ **Görsel Güncelleme**\n📊 İlerleme: `{processed_count}/{total_all}`\n📺 Dizi: `{g_dizi}`")
+        except: hata += 1
 
-    final_text = (
-        f"✅ **İşlem Tamamlandı!**\n\n"
-        f"🎬 Güncellenen Film: `{g_film}`\n"
-        f"📺 Güncellenen Dizi: `{g_dizi}`\n"
-        f"⚠️ Hata: `{hata}`\n\n"
-        f"Türkçe poster, backdrop veya logo bulunan tüm içerikler güncellendi."
-    )
-    await update_status(final_text, force=True)
+    await update_status_safe(status, f"✅ **Görsel Güncelleme Tamamlandı!**\n🎬 Film: `{g_film}`\n📺 Dizi: `{g_dizi}`")
 
-# ------------------ /TURKCE (Toplu Güncelleme) ------------------
 @Client.on_message(filters.command("turkce") & filters.private & CustomFilters.owner)
 async def toplu_turkce_guncelle(client: Client, message: Message):
-    """Hem başlıkları hem de posterleri sırayla günceller."""
-    status = await message.reply_text("🚀 **Tam Kapsamlı Türkçe Güncelleme Başlatıldı!**\n\n"
-                                      "1️⃣ Başlıklar güncellenecek.\n"
-                                      "2️⃣ Poster, Logo ve Arkaplanlar taranacak.\n\n"
-                                      "Lütfen bekleyin...")
+    """Sırayla başlıkları ve posterleri günceller, her aşama arasında bekler."""
+    
+    await message.reply_text("🚀 **Tam Kapsamlı Türkçe Güncelleme Başlatıldı!**\nHer işlem arası 15 sn beklenecektir.")
     
     # 1. Aşama: Türkçe Başlıklar
-    await status.edit_text("🔄 **Aşama 1/2:** Türkçe başlıklar güncelleniyor...")
     try:
-        # Mevcut fonksiyonu tetikliyoruz
         await toplu_turkce_yap(client, message)
     except Exception as e:
-        LOGGER.error(f"Başlık güncelleme hatası: {e}")
+        LOGGER.error(f"Başlık hatası: {e}")
+
+    await asyncio.sleep(5) # İki ana aşama arası kısa bir nefes payı
 
     # 2. Aşama: Türkçe Görseller
-    # Not: toplu_turkce_yap fonksiyonu bittiğinde kendi 'tamamlandı' mesajını atacağı için 
-    # kullanıcıya yeni bir başlangıç mesajı gönderiyoruz.
-    status_2 = await message.reply_text("🔄 **Aşama 2/2:** Türkçe afiş ve logolar kontrol ediliyor...")
     try:
-        # Mevcut fonksiyonu tetikliyoruz
         await toplu_poster_guncelle(client, message)
     except Exception as e:
-        LOGGER.error(f"Poster güncelleme hatası: {e}")
+        LOGGER.error(f"Poster hatası: {e}")
 
-    await message.reply_text("🏁 **Tüm Türkçe güncelleme işlemleri (Başlık + Görsel) sona erdi.**")
+    await message.reply_text("🏁 **Tüm süreç sona erdi.**")

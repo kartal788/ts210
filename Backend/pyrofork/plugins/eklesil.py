@@ -391,39 +391,41 @@ async def update_status_safe(status_msg, new_text):
         await asyncio.sleep(e.value)
     except Exception:
         pass
+# ------------------ /TURKCE (Toplu Güncelleme) ------------------
 
 @Client.on_message(filters.command("turkcebaslik") & filters.private & CustomFilters.owner)
 async def toplu_turkce_yap(client: Client, message: Message):
-    status = await message.reply_text("🔄 **İşlem başlatılıyor...**\nVeritabanı taranıyor.")
+    status = await message.reply_text("🔄 **Başlık Güncelleme Başlatıldı...**")
     
     total_movies = await movie_col.count_documents({"tmdb_id": {"$ne": None}})
     total_series = await series_col.count_documents({"tmdb_id": {"$ne": None}})
     total_all = total_movies + total_series
     
     processed_count, g_film, g_dizi, hata = 0, 0, 0, 0
+    last_update_time = time.time() # Zamanlayıcı
 
     # --- FİLMLER ---
     async for movie in movie_col.find({"tmdb_id": {"$ne": None}}):
         processed_count += 1
         try:
             m_id = movie.get("tmdb_id")
-            details = await tmdb.movie(m_id).details()
+            details = await tmdb.movie(m_id).details() # TMDB Beklemesi Yok
             tr_title = details.title
 
             if tr_title and tr_title != movie.get("title"):
                 await movie_col.update_one({"_id": movie["_id"]}, {"$set": {"title": tr_title}})
                 g_film += 1
             
-            # Her işlemden sonra 15 saniye bekleme
-            await asyncio.sleep(15)
-            
-            await update_status_safe(status, 
-                f"🔄 **Türkçe Başlık Güncelleme**\n\n"
-                f"📊 İlerleme: `{processed_count}/{total_all}`\n"
-                f"⏳ Kalan: `{total_all - processed_count}`\n\n"
-                f"🎬 Güncellenen: `{g_film}`\n"
-                f"⚠️ Hatalar: `{hata}`"
-            )
+            # Sadece 15 saniyede bir Telegram mesajını güncelle
+            if time.time() - last_update_time > 15:
+                await update_status_safe(status, 
+                    f"🔄 **Başlık Güncelleme**\n\n"
+                    f"📊 İlerleme: `{processed_count}/{total_all}`\n"
+                    f"🎬 Güncellenen: `{g_film}`\n"
+                    f"⚠️ Hatalar: `{hata}`"
+                )
+                last_update_time = time.time()
+
         except Exception as e:
             hata += 1
             LOGGER.error(f"Başlık Hatası: {e}")
@@ -433,39 +435,38 @@ async def toplu_turkce_yap(client: Client, message: Message):
         processed_count += 1
         try:
             t_id = tv.get("tmdb_id")
-            details = await tmdb.tv(t_id).details()
+            details = await tmdb.tv(t_id).details() # TMDB Beklemesi Yok
             tr_title = details.name
 
             if tr_title and tr_title != tv.get("title"):
                 await series_col.update_one({"_id": tv["_id"]}, {"$set": {"title": tr_title}})
                 g_dizi += 1
             
-            # Her işlemden sonra 15 saniye bekleme
-            await asyncio.sleep(15)
-
-            await update_status_safe(status,
-                f"🔄 **Türkçe Başlık Güncelleme**\n\n"
-                f"📊 İlerleme: `{processed_count}/{total_all}`\n"
-                f"⏳ Kalan: `{total_all - processed_count}`\n\n"
-                f"📺 Güncellenen: `{g_dizi}`\n"
-                f"⚠️ Hatalar: `{hata}`"
-            )
+            # Sadece 15 saniyede bir Telegram mesajını güncelle
+            if time.time() - last_update_time > 15:
+                await update_status_safe(status,
+                    f"🔄 **Başlık Güncelleme**\n\n"
+                    f"📊 İlerleme: `{processed_count}/{total_all}`\n"
+                    f"📺 Güncellenen: `{g_dizi}`\n"
+                    f"⚠️ Hatalar: `{hata}`"
+                )
+                last_update_time = time.time()
         except Exception as e:
             hata += 1
-            LOGGER.error(f"Başlık Hatası: {e}")
 
-    await update_status_safe(status, f"✅ **Başlık Güncelleme Tamamlandı!**\n🎬 Film: `{g_film}`\n📺 Dizi: `{g_dizi}`")
+    await status.edit_text(f"✅ **Başlık Güncelleme Tamamlandı!**\n🎬 Film: `{g_film}`\n📺 Dizi: `{g_dizi}`")
 
 
 @Client.on_message(filters.command("posterturkce") & filters.private & CustomFilters.owner)
 async def toplu_poster_guncelle(client: Client, message: Message):
-    status = await message.reply_text("🖼️ **Türkçe Afiş ve Logo Kontrolü Başlatıldı...**")
+    status = await message.reply_text("🖼️ **Görsel Güncelleme Başlatıldı...**")
     
     total_movies = await movie_col.count_documents({"tmdb_id": {"$ne": None}})
     total_series = await series_col.count_documents({"tmdb_id": {"$ne": None}})
     total_all = total_movies + total_series
     
     processed_count, g_film, g_dizi, hata = 0, 0, 0, 0
+    last_update_time = time.time()
 
     async def get_tr_images(tmdb_id, media_type):
         tr_poster, tr_backdrop, tr_logo = None, None, None
@@ -476,10 +477,6 @@ async def toplu_poster_guncelle(client: Client, message: Message):
                     for p in img_data.posters:
                         if getattr(p, 'iso_639_1', None) == "tr":
                             tr_poster = f"https://image.tmdb.org/t/p/w300{p.file_path}"; break
-                if hasattr(img_data, 'backdrops'):
-                    for b in img_data.backdrops:
-                        if getattr(b, 'iso_639_1', None) == "tr":
-                            tr_backdrop = f"https://image.tmdb.org/t/p/original{b.file_path}"; break
                 if hasattr(img_data, 'logos'):
                     for l in img_data.logos:
                         if getattr(l, 'iso_639_1', None) == "tr":
@@ -494,15 +491,15 @@ async def toplu_poster_guncelle(client: Client, message: Message):
             tr_p, tr_b, tr_l = await get_tr_images(movie.get("tmdb_id"), "movie")
             update_fields = {}
             if tr_p and tr_p != movie.get("poster"): update_fields["poster"] = tr_p
-            if tr_b and tr_b != movie.get("backdrop"): update_fields["backdrop"] = tr_b
             if tr_l and tr_l != movie.get("logo"): update_fields["logo"] = tr_l
             
             if update_fields:
                 await movie_col.update_one({"_id": movie["_id"]}, {"$set": update_fields})
                 g_film += 1
             
-            await asyncio.sleep(15) # 15 Saniye Bekleme
-            await update_status_safe(status, f"🖼️ **Görsel Güncelleme**\n📊 İlerleme: `{processed_count}/{total_all}`\n🎬 Film: `{g_film}`")
+            if time.time() - last_update_time > 15:
+                await update_status_safe(status, f"🖼️ **Görsel Güncelleme**\n📊 İlerleme: `{processed_count}/{total_all}`\n🎬 Film: `{g_film}`")
+                last_update_time = time.time()
         except: hata += 1
 
     # --- DİZİLER ---
@@ -512,37 +509,26 @@ async def toplu_poster_guncelle(client: Client, message: Message):
             tr_p, tr_b, tr_l = await get_tr_images(tv.get("tmdb_id"), "tv")
             update_fields = {}
             if tr_p and tr_p != tv.get("poster"): update_fields["poster"] = tr_p
-            if tr_b and tr_b != tv.get("backdrop"): update_fields["backdrop"] = tr_b
             if tr_l and tr_l != tv.get("logo"): update_fields["logo"] = tr_l
             
             if update_fields:
                 await series_col.update_one({"_id": tv["_id"]}, {"$set": update_fields})
                 g_dizi += 1
             
-            await asyncio.sleep(15) # 15 Saniye Bekleme
-            await update_status_safe(status, f"🖼️ **Görsel Güncelleme**\n📊 İlerleme: `{processed_count}/{total_all}`\n📺 Dizi: `{g_dizi}`")
+            if time.time() - last_update_time > 15:
+                await update_status_safe(status, f"🖼️ **Görsel Güncelleme**\n📊 İlerleme: `{processed_count}/{total_all}`\n📺 Dizi: `{g_dizi}`")
+                last_update_time = time.time()
         except: hata += 1
 
-    await update_status_safe(status, f"✅ **Görsel Güncelleme Tamamlandı!**\n🎬 Film: `{g_film}`\n📺 Dizi: `{g_dizi}`")
+    await status.edit_text(f"✅ **Görsel Güncelleme Tamamlandı!**\n🎬 Film: `{g_film}`\n📺 Dizi: `{g_dizi}`")
 
 @Client.on_message(filters.command("turkce") & filters.private & CustomFilters.owner)
 async def toplu_turkce_guncelle(client: Client, message: Message):
-    """Sırayla başlıkları ve posterleri günceller, her aşama arasında bekler."""
+    """TMDB isteklerini kısıtlamadan sadece Telegram arayüzünü kontrollü günceller."""
+    await message.reply_text("🚀 **Tam Kapsamlı Türkçe Güncelleme Başlatıldı!**\nTelegram mesajları 15 saniyede bir yenilenecektir.")
     
-    await message.reply_text("🚀 **Tam Kapsamlı Türkçe Güncelleme Başlatıldı!**\nHer işlem arası 15 sn beklenecektir.")
+    await toplu_turkce_yap(client, message)
+    await asyncio.sleep(2) 
+    await toplu_poster_guncelle(client, message)
     
-    # 1. Aşama: Türkçe Başlıklar
-    try:
-        await toplu_turkce_yap(client, message)
-    except Exception as e:
-        LOGGER.error(f"Başlık hatası: {e}")
-
-    await asyncio.sleep(5) # İki ana aşama arası kısa bir nefes payı
-
-    # 2. Aşama: Türkçe Görseller
-    try:
-        await toplu_poster_guncelle(client, message)
-    except Exception as e:
-        LOGGER.error(f"Poster hatası: {e}")
-
     await message.reply_text("🏁 **Tüm süreç sona erdi.**")

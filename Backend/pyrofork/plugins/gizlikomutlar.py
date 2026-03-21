@@ -9,6 +9,8 @@ import re
 async def gizli_komutlar(client, message: Message):
     await message.reply_text(
         "/cevir 🇹🇷 Açıklamaları Türkçeye çevirir.\n"
+        "/posterturkce 🖼️ Poster Yerelleştirme. \n"
+        "/turkcebaslik 🏷️ Başlık Yerelleştirme. \n"
         "/linklerisil 🔗 Link içeren videoları siler.\n"
         "/sil 🗑️ Tüm filmleri ve dizileri siler.\n"
     )

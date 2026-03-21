@@ -592,3 +592,32 @@ async def toplu_poster_guncelle(client: Client, message: Message):
         f"Türkçe poster, backdrop veya logo bulunan tüm içerikler güncellendi."
     )
     await update_status(final_text, force=True)
+
+# ------------------ /TURKCE (Toplu Güncelleme) ------------------
+@Client.on_message(filters.command("turkce") & filters.private & CustomFilters.owner)
+async def toplu_turkce_guncelle(client: Client, message: Message):
+    """Hem başlıkları hem de posterleri sırayla günceller."""
+    status = await message.reply_text("🚀 **Tam Kapsamlı Türkçe Güncelleme Başlatıldı!**\n\n"
+                                      "1️⃣ Başlıklar güncellenecek.\n"
+                                      "2️⃣ Poster, Logo ve Arkaplanlar taranacak.\n\n"
+                                      "Lütfen bekleyin...")
+    
+    # 1. Aşama: Türkçe Başlıklar
+    await status.edit_text("🔄 **Aşama 1/2:** Türkçe başlıklar güncelleniyor...")
+    try:
+        # Mevcut fonksiyonu tetikliyoruz
+        await toplu_turkce_yap(client, message)
+    except Exception as e:
+        LOGGER.error(f"Başlık güncelleme hatası: {e}")
+
+    # 2. Aşama: Türkçe Görseller
+    # Not: toplu_turkce_yap fonksiyonu bittiğinde kendi 'tamamlandı' mesajını atacağı için 
+    # kullanıcıya yeni bir başlangıç mesajı gönderiyoruz.
+    status_2 = await message.reply_text("🔄 **Aşama 2/2:** Türkçe afiş ve logolar kontrol ediliyor...")
+    try:
+        # Mevcut fonksiyonu tetikliyoruz
+        await toplu_poster_guncelle(client, message)
+    except Exception as e:
+        LOGGER.error(f"Poster güncelleme hatası: {e}")
+
+    await message.reply_text("🏁 **Tüm Türkçe güncelleme işlemleri (Başlık + Görsel) sona erdi.**")

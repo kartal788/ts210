@@ -466,9 +466,10 @@ async def toplu_turkce_yap(client: Client, message: Message):
     )
     await update_status(final_text, force=True)
 
+
 @Client.on_message(filters.command("posterturkce") & filters.private & CustomFilters.owner)
 async def toplu_poster_guncelle(client: Client, message: Message):
-    status = await message.reply_text("🖼️ **Türkçe Afiş Kontrolü Başlatıldı...**\nSadece TMDb'de 'tr' etiketli görsel varsa güncellenecektir.")
+    status = await message.reply_text("🖼️ **Türkçe Afiş ve Logo Kontrolü Başlatıldı...**\nSadece TMDb'de 'tr' etiketli görsel/logo varsa güncellenecektir.")
     
     total_movies = await movie_col.count_documents({"tmdb_id": {"$ne": None}})
     total_series = await series_col.count_documents({"tmdb_id": {"$ne": None}})
@@ -489,56 +490,63 @@ async def toplu_poster_guncelle(client: Client, message: Message):
         except Exception:
             pass
 
-    # Yardımcı Fonksiyon: SADECE Türkçe Poster ve Backdrop Bulma
+    # Yardımcı Fonksiyon: SADECE Türkçe Poster, Backdrop ve Logo Bulma
     async def get_tr_images(tmdb_id, media_type):
         tr_poster = None
         tr_backdrop = None
+        tr_logo = None
         try:
-            # TMDb'den tüm görsel varyasyonlarını çekiyoruz
             if media_type == "movie":
                 img_data = await tmdb.movie(tmdb_id).images()
             else:
                 img_data = await tmdb.tv(tmdb_id).images()
             
             if img_data:
-                # Posterler içinde dili 'tr' olanı ara
+                # 1. Türkçe Poster
                 if hasattr(img_data, 'posters') and img_data.posters:
                     for p in img_data.posters:
                         if getattr(p, 'iso_639_1', None) == "tr":
                             tr_poster = f"https://image.tmdb.org/t/p/w500{p.file_path}"
-                            break # İlk bulduğunu al
+                            break
                 
-                # Backdrop'lar içinde dili 'tr' olanı ara
+                # 2. Türkçe Backdrop
                 if hasattr(img_data, 'backdrops') and img_data.backdrops:
                     for b in img_data.backdrops:
                         if getattr(b, 'iso_639_1', None) == "tr":
                             tr_backdrop = f"https://image.tmdb.org/t/p/original{b.file_path}"
                             break
+
+                # 3. Türkçe Logo
+                if hasattr(img_data, 'logos') and img_data.logos:
+                    for l in img_data.logos:
+                        if getattr(l, 'iso_639_1', None) == "tr":
+                            tr_logo = f"https://image.tmdb.org/t/p/w300{l.file_path}"
+                            break
         except Exception as e:
             LOGGER.warning(f"TMDb Görsel Hatası ({tmdb_id}): {e}")
-        return tr_poster, tr_backdrop
+        return tr_poster, tr_backdrop, tr_logo
 
     # --- FİLMLER ---
     async for movie in movie_col.find({"tmdb_id": {"$ne": None}}):
         processed_count += 1
         try:
             m_id = movie.get("tmdb_id")
-            tr_poster, tr_backdrop = await get_tr_images(m_id, "movie")
+            tr_p, tr_b, tr_l = await get_tr_images(m_id, "movie")
             
             update_fields = {}
-            # Eğer Türkçe poster varsa ve şu ankinden farklıysa listeye ekle
-            if tr_poster and tr_poster != movie.get("poster"):
-                update_fields["poster"] = tr_poster
-            # Eğer Türkçe backdrop varsa ve şu ankinden farklıysa listeye ekle
-            if tr_backdrop and tr_backdrop != movie.get("backdrop"):
-                update_fields["backdrop"] = tr_backdrop
+            if tr_p and tr_p != movie.get("poster"):
+                update_fields["poster"] = tr_p
+            if tr_b and tr_b != movie.get("backdrop"):
+                update_fields["backdrop"] = tr_b
+            if tr_l and tr_l != movie.get("logo"):
+                update_fields["logo"] = tr_l
             
             if update_fields:
                 await movie_col.update_one({"_id": movie["_id"]}, {"$set": update_fields})
                 g_film += 1
             
             await update_status(
-                f"🖼️ **Türkçe Görsel Güncelleme**\n\n"
+                f"🖼️ **Türkçe Görsel/Logo Güncelleme**\n\n"
                 f"📊 İlerleme: `{processed_count}/{total_all}`\n"
                 f"🎬 Güncellenen Film: `{g_film}`\n"
                 f"⚠️ Hatalar: `{hata}`"
@@ -552,20 +560,22 @@ async def toplu_poster_guncelle(client: Client, message: Message):
         processed_count += 1
         try:
             t_id = tv.get("tmdb_id")
-            tr_poster, tr_backdrop = await get_tr_images(t_id, "tv")
+            tr_p, tr_b, tr_l = await get_tr_images(t_id, "tv")
             
             update_fields = {}
-            if tr_poster and tr_poster != tv.get("poster"):
-                update_fields["poster"] = tr_poster
-            if tr_backdrop and tr_backdrop != tv.get("backdrop"):
-                update_fields["backdrop"] = tr_backdrop
+            if tr_p and tr_p != tv.get("poster"):
+                update_fields["poster"] = tr_p
+            if tr_b and tr_b != tv.get("backdrop"):
+                update_fields["backdrop"] = tr_b
+            if tr_l and tr_l != tv.get("logo"):
+                update_fields["logo"] = tr_l
             
             if update_fields:
                 await series_col.update_one({"_id": tv["_id"]}, {"$set": update_fields})
                 g_dizi += 1
             
             await update_status(
-                f"🖼️ **Türkçe Görsel Güncelleme**\n\n"
+                f"🖼️ **Türkçe Görsel/Logo Güncelleme**\n\n"
                 f"📊 İlerleme: `{processed_count}/{total_all}`\n"
                 f"📺 Güncellenen Dizi: `{g_dizi}`\n"
                 f"⚠️ Hatalar: `{hata}`"
@@ -576,9 +586,9 @@ async def toplu_poster_guncelle(client: Client, message: Message):
 
     final_text = (
         f"✅ **İşlem Tamamlandı!**\n\n"
-        f"🎬 Güncellenen Film (Türkçe): `{g_film}`\n"
-        f"📺 Güncellenen Dizi (Türkçe): `{g_dizi}`\n"
+        f"🎬 Güncellenen Film: `{g_film}`\n"
+        f"📺 Güncellenen Dizi: `{g_dizi}`\n"
         f"⚠️ Hata: `{hata}`\n\n"
-        f"Not: Türkçe görseli bulunmayan içeriklere dokunulmadı."
+        f"Türkçe poster, backdrop veya logo bulunan tüm içerikler güncellendi."
     )
     await update_status(final_text, force=True)

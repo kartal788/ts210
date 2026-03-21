@@ -153,9 +153,7 @@ BotCommand("vindir", "💾 Veritabanını indirir."),
 BotCommand("log", "📄 Günlük dosyasını gönderir."),
 BotCommand("set", "🎬 IMDb meta verilerini elle ekler."),
 BotCommand("gizlikomutlar", "🔐 Gizli komutları gösterir."),
-BotCommand("posterturkce", "🖼️ Poster Yerelleştirme"),
-BotCommand("turkcebaslik", "🏷️ Başlık Yerelleştirme"),
-BotCommand("turkce", "🏷️ İçerikleri Türkçe yapar."), 
+BotCommand("turkce", "🇹🇷 İçerikleri Türkçe yapar."), 
 BotCommand("restart", "♻️ Botu yeniden başlatır.")
 ]
 

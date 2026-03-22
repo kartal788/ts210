@@ -146,13 +146,11 @@ commands = [
 BotCommand("start", "🚀 Botu başlatır."),
 BotCommand("ekle", "➕ Film veya dizi linki ekler."),
 BotCommand("istatistik", "📈 Bot istatistiklerini görüntüler."),
-BotCommand("tur", "🇹🇷 Türleri Türkçeye çevirir."),
 BotCommand("aynivideolarisil", "🧹 Aynı olan videoları siler."),
 BotCommand("calismayanlinklerisil", "🗑️ Çalışmayan linkleri siler."),
 BotCommand("vindir", "💾 Veritabanını indirir."),
 BotCommand("log", "📄 Günlük dosyasını gönderir."),
 BotCommand("set", "🎬 IMDb meta verilerini elle ekler."),
-BotCommand("gizlikomutlar", "🔐 Gizli komutları gösterir."),
 BotCommand("turkce", "🇹🇷 İçerikleri Türkçe yapar."), 
 BotCommand("restart", "♻️ Botu yeniden başlatır.")
 ]

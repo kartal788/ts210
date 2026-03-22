@@ -523,12 +523,96 @@ async def toplu_poster_guncelle(client: Client, message: Message):
     await status.edit_text(f"✅ **Görsel Güncelleme Tamamlandı!**\n🎬 Film: `{g_film}`\n📺 Dizi: `{g_dizi}`")
 
 @Client.on_message(filters.command("turkce") & filters.private & CustomFilters.owner)
-async def toplu_turkce_guncelle(client: Client, message: Message):
-    """TMDB isteklerini kısıtlamadan sadece Telegram arayüzünü kontrollü günceller."""
-    await message.reply_text("🚀 **Tam Kapsamlı Türkçe Güncelleme Başlatıldı!**\nTelegram mesajları 15 saniyede bir yenilenecektir.")
+async def tam_kapsamli_turkce_guncelle(client: Client, message: Message):
+    status = await message.reply_text("🚀 **Tam Kapsamlı Güncelleme Başlatıldı...**\n(Başlık, Görsel, Backdrop ve Türler)")
     
-    await toplu_turkce_yap(client, message)
-    await asyncio.sleep(2) 
-    await toplu_poster_guncelle(client, message)
+    genre_map = {
+        "Action": "Aksiyon", "Film-Noir": "Kara Film", "Game-Show": "Oyun Gösterisi", "Short": "Kısa",
+        "Sci-Fi": "Bilim Kurgu", "Sport": "Spor", "Adventure": "Macera", "Animation": "Animasyon",
+        "Biography": "Biyografi", "Comedy": "Komedi", "Crime": "Suç", "Documentary": "Belgesel",
+        "Drama": "Dram", "Family": "Aile", "News": "Haberler", "Fantasy": "Fantastik",
+        "History": "Tarih", "Horror": "Korku", "Music": "Müzik", "Musical": "Müzikal",
+        "Mystery": "Gizem", "Romance": "Romantik", "Science Fiction": "Bilim Kurgu",
+        "TV Movie": "TV Filmi", "Thriller": "Gerilim", "War": "Savaş", "Western": "Vahşi Batı",
+        "Action & Adventure": "Aksiyon ve Macera", "Kids": "Çocuklar", "Reality": "Gerçeklik",
+        "Reality-TV": "Gerçeklik", "Sci-Fi & Fantasy": "Bilim Kurgu ve Fantazi", "Soap": "Pembe Dizi",
+        "War & Politics": "Savaş ve Politika", "Bilim-Kurgu": "Bilim Kurgu",
+        "Aksiyon & Macera": "Aksiyon ve Macera", "Savaş & Politik": "Savaş ve Politika",
+        "Bilim Kurgu & Fantazi": "Bilim Kurgu ve Fantazi", "Talk": "Talk-Show"
+    }
+
+    total_movies = await movie_col.count_documents({"tmdb_id": {"$ne": None}})
+    total_series = await series_col.count_documents({"tmdb_id": {"$ne": None}})
+    total_all = total_movies + total_series
     
-    await message.reply_text("🏁 **Tüm süreç sona erdi.**")
+    counts = {"proc": 0, "title": 0, "img": 0, "genre": 0, "err": 0}
+    last_update = time.time()
+
+    async def get_tr_data(tmdb_id, media_type):
+        """TMDB'den Türkçe başlık, poster, logo ve backdrop çeker."""
+        tr_title, tr_poster, tr_logo, tr_backdrop = None, None, None, None
+        try:
+            m = tmdb.movie(tmdb_id) if media_type == "movie" else tmdb.tv(tmdb_id)
+            details = await m.details()
+            tr_title = details.title if media_type == "movie" else details.name
+            
+            img_data = await m.images()
+            if img_data:
+                # Poster
+                for p in getattr(img_data, 'posters', []):
+                    if getattr(p, 'iso_639_1', None) == "tr":
+                        tr_poster = f"https://image.tmdb.org/t/p/w300{p.file_path}"; break
+                # Logo
+                for l in getattr(img_data, 'logos', []):
+                    if getattr(l, 'iso_639_1', None) == "tr":
+                        tr_logo = f"https://image.tmdb.org/t/p/w300{l.file_path}"; break
+                # Backdrop
+                for b in getattr(img_data, 'backdrops', []):
+                    if getattr(b, 'iso_639_1', None) == "tr":
+                        tr_backdrop = f"https://image.tmdb.org/t/p/w1280{b.file_path}"; break
+        except: pass
+        return tr_title, tr_poster, tr_logo, tr_backdrop
+
+    for col_info in [(movie_col, "movie"), (series_col, "tv")]:
+        collection, m_type = col_info
+        async for doc in collection.find({"tmdb_id": {"$ne": None}}):
+            counts["proc"] += 1
+            try:
+                upd = {}
+                tr_t, tr_p, tr_l, tr_b = await get_tr_data(doc.get("tmdb_id"), m_type)
+                
+                if tr_t and tr_t != doc.get("title"): upd["title"] = tr_t; counts["title"] += 1
+                if tr_p and tr_p != doc.get("poster"): upd["poster"] = tr_p; counts["img"] += 1
+                if tr_l and tr_l != doc.get("logo"): upd["logo"] = tr_l; counts["img"] += 1
+                if tr_b and tr_b != doc.get("backdrop"): upd["backdrop"] = tr_b; counts["img"] += 1
+                
+                current_genres = doc.get("genres", [])
+                new_genres = [genre_map.get(g, g) for g in current_genres]
+                if new_genres != current_genres:
+                    upd["genres"] = new_genres; counts["genre"] += 1
+
+                if upd:
+                    await collection.update_one({"_id": doc["_id"]}, {"$set": upd})
+
+                if time.time() - last_update > 15:
+                    progress = (counts["proc"] / total_all) * 100
+                    await update_status_safe(status, 
+                        f"🔄 **Güncelleme Yapılıyor...**\n\n"
+                        f"📊 İlerleme: `% {progress:.1f}`\n"
+                        f"✍️ Başlık: `{counts['title']}`\n"
+                        f"🖼️ Medya (Poster/Logo/Backdrop): `{counts['img']}`\n"
+                        f"🎭 Tür: `{counts['genre']}`\n"
+                        f"⚠️ Hata: `{counts['err']}`"
+                    )
+                    last_update = time.time()
+            except:
+                counts["err"] += 1
+
+    await status.edit_text(
+        f"✅ **Tüm Güncellemeler Tamamlandı!**\n\n"
+        f"🎬 Toplam Kayıt: `{total_all}`\n"
+        f"✍️ Başlık: `{counts['title']}`\n"
+        f"🖼️ Medya: `{counts['img']}`\n"
+        f"🎭 Tür: `{counts['genre']}`\n"
+        f"❌ Hatalı: `{counts['err']}`"
+    )
